@@ -2,6 +2,7 @@
   "name": "nohop-codex",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://github.com/IsolatedWolfLove/codex_nohup",
   "description": "Persistent SSH terminal sessions for Linux and Windows",
   "type": "module",
   "main": "out/main/index.js",
@@ -11,7 +12,7 @@
     "test": "vitest run",
     "build": "npm run typecheck && electron-vite build",
     "agent:win": "node scripts/build-agent.mjs windows amd64",
-    "package:linux": "npm run build && node scripts/package.mjs --linux AppImage --x64",
+    "package:linux": "npm run build && node scripts/package.mjs --linux AppImage deb --x64",
     "package:windows": "npm run build && node scripts/package.mjs --win nsis --x64",
     "package": "npm run build && node scripts/package.mjs"
   },
@@ -40,6 +41,8 @@
     "appId": "com.nohop.codex",
     "productName": "Nohop Codex",
     "npmRebuild": false,
+    "compression": "maximum",
+    "electronLanguages": ["en-US", "zh-CN", "zh-TW"],
     "directories": {
       "output": "release"
     },
@@ -58,9 +61,11 @@
     ],
     "linux": {
       "target": [
-        "AppImage"
+        "AppImage",
+        "deb"
       ],
-      "category": "Development"
+      "category": "Development",
+      "maintainer": "IsolatedWolfLove"
     },
     "win": {
       "target": [

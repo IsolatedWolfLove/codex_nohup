@@ -38,11 +38,26 @@ Linux 远端需安装 `tmux`（推荐）或 `screen`。Windows 远端需 Windows
 
 ## Tag 自动构建
 
-推送 `v1.2.3` 或 `v1.2.3-beta.1` 格式的 tag 后，GitHub Actions 会分别在 Linux 和 Windows runner 上构建 AppImage 与 NSIS 安装包，并在该次 Actions Run 中保留产物 30 天。
+推送 `v1.2.3` 或 `v1.2.3-beta.1` 格式的 tag 后，GitHub Actions 会分别在 Linux 和 Windows runner 上构建 AppImage、Debian/Ubuntu 的 `.deb` 与 Windows NSIS 安装包，并在该次 Actions Run 中保留产物 30 天。
 
 ```bash
 git tag -a v0.1.0 -m "Nohop Codex v0.1.0"
 git push origin v0.1.0
 ```
 
-构建完成后可从 GitHub 的 Actions 页面下载 `nohop-codex-linux-<tag>` 和 `nohop-codex-windows-<tag>` 两个 artifacts。
+构建完成后可从 GitHub 的 Actions 页面下载 `nohop-codex-linux-<tag>` 和 `nohop-codex-windows-<tag>` 两个 artifacts；Linux artifact 包含 `.AppImage` 和 `.deb`，这些安装包也会自动上传到对应 tag 的 GitHub Release。
+
+本地构建 Linux 安装包（x64）：
+
+```bash
+npm run agent:win
+npm run package:linux
+```
+
+产物位于 `release/` 目录。
+
+### 安装包体积
+
+发行包仅保留 Electron 的英文、简体中文和繁体中文语言资源，并使用 `maximum` 压缩（打包时间会增加）。这不限制终端显示其他语言的文本；如需其他语言的系统菜单或对话框，可在 `package.json` 的 `build.electronLanguages` 中添加对应语言。
+
+安装包的大部分体积来自 Electron 自带的 Chromium 和 Node.js。`release/linux-unpacked/` 是未压缩的应用目录，不应与安装包一起分发。Windows 远端代理在所有平台均需保留，用于连接 Windows 服务器。

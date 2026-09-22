@@ -38,7 +38,9 @@ jobs:
           - runner: ubuntu-latest
             target: linux
             artifact: nohop-codex-linux
-            path: release/*.AppImage
+            path: |
+              release/*.AppImage
+              release/*.deb
           - runner: windows-latest
             target: windows
             artifact: nohop-codex-windows

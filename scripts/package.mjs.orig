@@ -11,7 +11,8 @@ const executable = path.resolve(
   '.bin',
   process.platform === 'win32' ? 'electron-builder.cmd' : 'electron-builder',
 );
-const child = spawn(executable, ['--publish', 'never'], { env: environment, stdio: 'inherit' });
+const args = [...process.argv.slice(2), '--publish', 'never'];
+const child = spawn(executable, args, { env: environment, stdio: 'inherit' });
 child.on('error', (error) => {
   console.error(error.message);
   process.exit(1);
