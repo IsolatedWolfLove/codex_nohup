@@ -194,7 +194,7 @@ func (f *fakeServer) handle(channel ssh.Channel, requests <-chan *ssh.Request) {
 			case cmd == supportProbe:
 				io.WriteString(channel, "tmux\n")
 			case strings.Contains(cmd, "list-sessions"):
-				io.WriteString(channel, "work\x011\x010\x01123\n")
+				io.WriteString(channel, "work|1|0|123\n")
 			case strings.Contains(cmd, "attach-session"):
 				io.WriteString(channel, "初始🙂")
 				go func() {
@@ -303,5 +303,17 @@ func TestSSHPrivateKeyAndAuthFailure(t *testing.T) {
 	input.Passphrase = "phrase"
 	if _, err = c.Connect(input); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAuthURLIsOpenedOncePerConnection(t *testing.T) {
+	var opened []string
+	c := New(func(TerminalEvent) {}, nil, ssh.InsecureIgnoreHostKey(), nil, func(value string) {
+		opened = append(opened, value)
+	})
+	c.openURLs("Authenticate at https://login.tailscale.com/a/test")
+	c.openURLs("Again: https://login.tailscale.com/a/test")
+	if len(opened) != 1 {
+		t.Fatalf("authentication URL opened %d times", len(opened))
 	}
 }

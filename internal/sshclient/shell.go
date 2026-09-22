@@ -48,7 +48,7 @@ func parseBackend(s string) string {
 }
 func listCommand(backend string) string {
 	if backend == "tmux" {
-		return "tmux list-sessions -F " + quoteSh("#{session_name}\x01#{session_windows}\x01#{session_attached}\x01#{session_created}") + " 2>/dev/null || true"
+		return "tmux list-sessions -F " + quoteSh("#{session_name}|#{session_windows}|#{session_attached}|#{session_created}") + " 2>/dev/null || true"
 	}
 	if backend == "screen" {
 		return "screen -ls 2>/dev/null || true"
@@ -59,7 +59,7 @@ func parseSessions(backend, output string) []PersistentSession {
 	result := []PersistentSession{}
 	for _, line := range strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n") {
 		if backend == "tmux" {
-			f := strings.Split(line, "\x01")
+			f := strings.Split(line, "|")
 			if len(f) != 4 || f[0] == "" {
 				continue
 			}

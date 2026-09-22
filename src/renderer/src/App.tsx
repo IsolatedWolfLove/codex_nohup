@@ -22,6 +22,23 @@ function TerminalView({ item, active }: { item: OpenTerminal; active: boolean })
     const addon = new FitAddon();
     instance.loadAddon(addon); instance.open(host.current); addon.fit(); instance.focus();
     terminal.current = instance; fit.current = addon;
+    instance.attachCustomKeyEventHandler((event) => {
+      if (event.type !== 'keydown') return true;
+      const copy = (event.ctrlKey && event.shiftKey && event.code === 'KeyC') || (event.ctrlKey && event.code === 'Insert');
+      const paste = (event.ctrlKey && event.shiftKey && event.code === 'KeyV') || (event.shiftKey && event.code === 'Insert');
+      if (copy) {
+        const selected = instance.getSelection();
+        if (selected) void desktop.clipboardSetText(selected).catch((error) => instance.writeln(`\r\n${errorMessage(error)}`));
+        return false;
+      }
+      if (paste) {
+        void desktop.clipboardGetText().then((value) => {
+          if (value) return desktop.writeTerminal(item.id, value);
+        }).catch((error) => instance.writeln(`\r\n${errorMessage(error)}`));
+        return false;
+      }
+      return true;
+    });
     const input = instance.onData((data) => void desktop.writeTerminal(item.id, data).catch((error) => instance.writeln(errorMessage(error))));
     const unsubscribe = desktop.onTerminalEvent((event: TerminalEvent) => {
       if (event.terminalId !== item.id) return;
@@ -127,7 +144,16 @@ export function App() {
   }
 
   async function kill(name: string) {
-    try { if (!await desktop.confirmKill(name)) return; await desktop.killSession(name); await refresh(); }
+    try {
+      if (!await desktop.confirmKill(name)) return;
+      await desktop.killSession(name);
+      const closed = terminals.filter((item) => item.name === name);
+      await Promise.all(closed.map((item) => desktop.closeTerminal(item.id).catch(() => undefined)));
+      const remaining = terminals.filter((item) => item.name !== name);
+      setTerminals(remaining);
+      setActiveId((current) => closed.some((item) => item.id === current) ? remaining[0]?.id ?? null : current);
+      await refresh();
+    }
     catch (error) { setMessage(errorMessage(error)); }
   }
 
@@ -149,5 +175,5 @@ export function App() {
     {credential && <div className="modal-backdrop credential-layer"><form className="credential-modal" onSubmit={(event) => { event.preventDefault(); answerCredential(false); }}><KeyRound size={24}/><h3>{credential.kind === 'hostkey' ? '首次连接服务器' : credential.kind === 'passphrase' ? 'SSH 私钥口令' : 'SSH 认证'}</h3><p>{credential.prompt}</p>{credential.kind !== 'hostkey' && <input autoFocus type={credential.secret ? 'password' : 'text'} value={credentialValue} onChange={(event) => setCredentialValue(event.target.value)} />}<div><button type="button" onClick={() => answerCredential(true)}>取消</button><button className="primary">{credential.kind === 'hostkey' ? '信任并连接' : '确认'}</button></div></form></div>}
   </main>;
 
-  return <main className="workspace"><aside><header><div><span className="eyebrow">CONNECTED</span><strong>{connected.host}</strong><small>{connected.platform} · {connected.backend}</small></div><button className="icon" title="断开连接" onClick={() => void disconnect()}><LogOut size={18} /></button></header><section className="new-session"><label>会话名称<input value={newName} onChange={(e) => setNewName(e.target.value)} /></label><label>工作目录（可选）<input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder={connected.platform === 'windows' ? 'C:\\work' : '/home/user/work'} /></label><button className="primary" disabled={busy || connected.backend === 'none'} onClick={() => void open(newName)}><Plus size={17} /> 新建并进入</button></section><div className="session-heading"><span>远端会话</span><button className="icon" onClick={() => void refresh()}><RefreshCw size={16} /></button></div><div className="session-list">{sessions.map((session) => <div className="session-card" key={session.name} onClick={() => void open(session.name)}><SquareTerminal size={18} /><div><strong>{session.name}</strong><small>{session.attached ? '已连接' : '等待重新进入'}{session.windows ? ` · ${session.windows} 窗口` : ''}</small></div><button className="delete" title="结束会话" onClick={(event) => { event.stopPropagation(); void kill(session.name); }}><Trash2 size={15} /></button></div>)}{sessions.length === 0 && <p className="empty">还没有持久会话</p>}</div></aside><section className="terminal-area"><nav>{terminals.map((item) => <button key={item.id} className={activeId === item.id ? 'active' : ''} onClick={() => setActiveId(item.id)}><span>{item.name}</span><X size={14} onClick={(event) => { event.stopPropagation(); void closeTerminal(item.id); }} /></button>)}</nav><div className="terminal-stack">{terminals.map((item) => <TerminalView key={item.id} item={item} active={activeId === item.id} />)}{terminals.length === 0 && <div className="terminal-empty"><SquareTerminal size={48} /><h2>选择一个会话</h2><p>点击左侧会话即可进入；关闭这个窗口不会结束远端任务。</p></div>}</div>{message && <div className="status">{message}</div>}</section></main>;
+  return <main className="workspace"><aside><header><div><span className="eyebrow">CONNECTED</span><strong>{connected.host}</strong><small>{connected.platform} · {connected.backend}</small></div><button className="icon" title="断开连接" onClick={() => void disconnect()}><LogOut size={18} /></button></header><section className="new-session"><label>会话名称<input value={newName} onChange={(e) => setNewName(e.target.value)} /></label><label>工作目录（可选）<input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder={connected.platform === 'windows' ? 'C:\\work' : '/home/user/work'} /></label>{connected.backend === 'none' && <p className="backend-warning">远端未安装 tmux 或 screen，无法创建持久会话。请先在服务器安装 tmux 后重新连接。</p>}<button className="primary" disabled={busy || connected.backend === 'none'} title={connected.backend === 'none' ? '远端需要安装 tmux 或 screen' : undefined} onClick={() => void open(newName)}><Plus size={17} /> {connected.backend === 'none' ? '需要安装 tmux / screen' : busy ? '正在进入…' : '新建并进入'}</button></section><div className="session-heading"><span>远端会话</span><button className="icon" onClick={() => void refresh()}><RefreshCw size={16} /></button></div><div className="session-list">{sessions.map((session) => <div className="session-card" key={session.name} onClick={() => void open(session.name)}><SquareTerminal size={18} /><div><strong>{session.name}</strong><small>{session.attached ? '已连接' : '等待重新进入'}{session.windows ? ` · ${session.windows} 窗口` : ''}</small></div><button className="delete" title="终止远端会话和其中的进程" onClick={(event) => { event.stopPropagation(); void kill(session.name); }}><Trash2 size={15} /></button></div>)}{sessions.length === 0 && <p className="empty">还没有持久会话</p>}</div></aside><section className="terminal-area"><nav>{terminals.map((item) => <div key={item.id} className={`terminal-tab ${activeId === item.id ? 'active' : ''}`}><button className="tab-select" onClick={() => setActiveId(item.id)}><span>{item.name}</span></button><button className="tab-action terminate" title="终止远端会话和其中的进程" onClick={() => void kill(item.name)}><Trash2 size={13}/></button><button className="tab-action" title="关闭标签（远端继续运行）" onClick={() => void closeTerminal(item.id)}><X size={14}/></button></div>)}</nav><div className="terminal-stack">{terminals.map((item) => <TerminalView key={item.id} item={item} active={activeId === item.id} />)}{terminals.length === 0 && <div className="terminal-empty"><SquareTerminal size={48} /><h2>选择一个会话</h2><p>点击左侧会话即可进入；关闭标签不会结束远端任务。使用垃圾桶可终止会话。</p></div>}</div>{message && <div className="status">{message}</div>}</section></main>;
 }

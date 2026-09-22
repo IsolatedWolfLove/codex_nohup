@@ -108,6 +108,7 @@ type connection struct {
 type Client struct {
 	op          sync.Mutex // Serializes connect/disconnect and remote control operations.
 	mu          sync.Mutex
+	urlMu       sync.Mutex
 	conn        *connection
 	terminals   map[string]*terminal
 	emit        func(TerminalEvent)
@@ -115,6 +116,7 @@ type Client struct {
 	hostKey     ssh.HostKeyCallback
 	credential  func(kind, prompt string, secret bool) (string, error)
 	openURL     func(string)
+	seenURLs    map[string]struct{}
 }
 
 func New(emit func(TerminalEvent), binary []byte, hostKey ssh.HostKeyCallback, credential func(string, string, bool) (string, error), openURL func(string)) *Client {
@@ -124,12 +126,15 @@ func New(emit func(TerminalEvent), binary []byte, hostKey ssh.HostKeyCallback, c
 	if openURL == nil {
 		openURL = func(string) {}
 	}
-	return &Client{emit: emit, agentBinary: binary, hostKey: hostKey, credential: credential, openURL: openURL, terminals: map[string]*terminal{}}
+	return &Client{emit: emit, agentBinary: binary, hostKey: hostKey, credential: credential, openURL: openURL, terminals: map[string]*terminal{}, seenURLs: map[string]struct{}{}}
 }
 func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 	c.op.Lock()
 	defer c.op.Unlock()
 	c.disconnect()
+	c.urlMu.Lock()
+	c.seenURLs = map[string]struct{}{}
+	c.urlMu.Unlock()
 	if strings.TrimSpace(input.Host) == "" || strings.TrimSpace(input.Username) == "" {
 		return ConnectionInfo{}, errors.New("请输入主机和用户名")
 	}
@@ -268,7 +273,18 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 func (c *Client) openURLs(message string) {
 	for _, field := range strings.Fields(message) {
 		value := strings.TrimRight(field, ".,;)]}")
-		if (strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://")) && c.openURL != nil { c.openURL(value) }
+		if !strings.HasPrefix(value, "https://") && !strings.HasPrefix(value, "http://") {
+			continue
+		}
+		c.urlMu.Lock()
+		_, seen := c.seenURLs[value]
+		if !seen {
+			c.seenURLs[value] = struct{}{}
+		}
+		c.urlMu.Unlock()
+		if !seen {
+			c.openURL(value)
+		}
 	}
 }
 func (c *Client) monitor(conn *connection) {
@@ -435,13 +451,17 @@ func (c *Client) agentCommand(conn *connection, args ...string) (commandResult, 
 	return checked(execCommand(conn.client, psCommand("& "+psQuote(path)+" "+strings.Join(args, " "))))
 }
 func (c *Client) ListSessions() ([]PersistentSession, error) {
-	c.op.Lock()
-	defer c.op.Unlock()
 	conn, err := c.current()
 	if err != nil {
 		return nil, err
 	}
 	if conn.info.Platform == "windows" {
+		c.op.Lock()
+		defer c.op.Unlock()
+		conn, err = c.current()
+		if err != nil {
+			return nil, err
+		}
 		r, err := c.agentCommand(conn, "list")
 		if err != nil {
 			return nil, err
@@ -522,7 +542,15 @@ func (c *Client) OpenSession(input CreateSessionInput) (TerminalOpened, error) {
 	t := &terminal{id: id, name: name, session: session, stdin: stdin, emit: c.emit}
 	session.Stdout = t
 	session.Stderr = t
-	if err = session.Start(cmd); err != nil {
+	started := make(chan error, 1)
+	go func() { started <- session.Start(cmd) }()
+	select {
+	case err = <-started:
+	case <-time.After(12 * time.Second):
+		_ = session.Close()
+		return TerminalOpened{}, errors.New("启动远端终端超时，请检查 tmux/screen 和 SSH 服务状态")
+	}
+	if err != nil {
 		return TerminalOpened{}, err
 	}
 	c.mu.Lock()
