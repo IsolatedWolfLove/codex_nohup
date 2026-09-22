@@ -83,6 +83,7 @@ jobs:
       - name: Create release and upload installers
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           mapfile -d '' files < <(find artifacts -type f -print0)
