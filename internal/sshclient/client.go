@@ -216,6 +216,7 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 	address := net.JoinHostPort(input.Host, strconv.Itoa(input.Port))
 	var raw net.Conn
 	var proxyClient *ssh.Client
+	var err error
 	if input.ProxyJumpHost != "" {
 		jumpInput := ConnectInput{Host: input.ProxyJumpHost, Port: input.ProxyJumpPort, Username: input.ProxyJumpUser, AuthMethod: "auto", PrivateKeyPath: input.ProxyJumpKey}
 		if jumpInput.Port == 0 { jumpInput.Port = 22 }

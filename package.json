@@ -1,6 +1,6 @@
 {
   "name": "nohop-codex",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "private": true,
   "homepage": "https://github.com/IsolatedWolfLove/codex_nohup",
   "description": "Persistent SSH terminal sessions for Linux and Windows",
