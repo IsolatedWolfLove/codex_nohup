@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"nohop-codex/internal/sshclient"
@@ -75,6 +76,14 @@ func (a *App) Connect(input sshclient.ConnectInput) (sshclient.ConnectionInfo, e
 		host := resolveSSHHost(content, input.Alias)
 		input.Host, input.Port, input.Username = host.Host, host.Port, host.User
 		input.PrivateKeyPath, input.AuthMethod = host.Identity, "auto"
+		if jumpName := strings.TrimSpace(strings.Split(host.ProxyJump, ",")[0]); jumpName != "" && strings.ToLower(jumpName) != "none" {
+			jumpAlias, jumpUser, jumpPort := parseProxyJump(jumpName)
+			jump := resolveSSHHost(content, jumpAlias)
+			if jumpUser != "" { jump.User = jumpUser }
+			if jumpPort != 0 { jump.Port = jumpPort }
+			input.ProxyJumpHost, input.ProxyJumpPort = jump.Host, jump.Port
+			input.ProxyJumpUser, input.ProxyJumpKey = jump.User, jump.Identity
+		}
 	}
 	return a.ssh.Connect(input)
 }

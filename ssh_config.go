@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"errors"
+	"net"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -11,6 +12,22 @@ import (
 
 	"nohop-codex/internal/sshclient"
 )
+
+func parseProxyJump(value string) (host, username string, port int) {
+	host = value
+	if at := strings.LastIndex(host, "@"); at >= 0 {
+		username, host = host[:at], host[at+1:]
+	}
+	if parsedHost, parsedPort, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+		port, _ = strconv.Atoi(parsedPort)
+	} else if colon := strings.LastIndex(host, ":"); colon > 0 && !strings.Contains(host[:colon], ":") {
+		if parsed, parseErr := strconv.Atoi(host[colon+1:]); parseErr == nil {
+			host, port = host[:colon], parsed
+		}
+	}
+	return host, username, port
+}
 
 func sshConfigPath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -93,6 +110,7 @@ func resolveSSHHost(content, alias string) sshclient.SSHHost {
 	if result.User == "" { if current, err := user.Current(); err == nil { result.User = current.Username } }
 	if value := values["port"]; value != "" { if port, err := strconv.Atoi(value); err == nil { result.Port = port } }
 	result.Identity = expandIdentity(values["identityfile"])
+	result.ProxyJump = values["proxyjump"]
 	return result
 }
 

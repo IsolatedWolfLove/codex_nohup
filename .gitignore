@@ -6,5 +6,8 @@ resources/agent/*.exe
 
 /build/bin/
 /build/windows/
+!/build/windows/
+/build/windows/*
+!/build/windows/icon.ico
 /src/renderer/wailsjs/
 /build/deb-*/

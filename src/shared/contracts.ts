@@ -9,6 +9,10 @@ export interface ConnectInput {
   password?: string;
   privateKeyPath?: string;
   passphrase?: string;
+  proxyJumpHost?: string;
+  proxyJumpPort?: number;
+  proxyJumpUser?: string;
+  proxyJumpKey?: string;
 }
 export interface SSHHost { alias: string; host: string; user?: string; port: number; identity?: string }
 export interface CredentialRequest { id: string; kind: string; prompt: string; secret: boolean }

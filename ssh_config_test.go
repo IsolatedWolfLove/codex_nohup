@@ -30,3 +30,25 @@ func TestParseSSHConfigAliases(t *testing.T) {
 	}
 }
 
+func TestResolveProxyJump(t *testing.T) {
+	config := `
+Host bastion
+  HostName public.example.com
+  User jump-user
+  Port 2200
+  IdentityFile ~/.ssh/jump
+
+Host private
+  HostName 192.168.5.88
+  User app
+  ProxyJump bastion
+`
+	target := resolveSSHHost(config, "private")
+	if target.ProxyJump != "bastion" {
+		t.Fatalf("unexpected proxy jump: %#v", target)
+	}
+	host, username, port := parseProxyJump("override@bastion:2222")
+	if host != "bastion" || username != "override" || port != 2222 {
+		t.Fatalf("unexpected parsed jump: %q %q %d", host, username, port)
+	}
+}

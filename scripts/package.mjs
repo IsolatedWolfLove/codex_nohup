@@ -24,8 +24,10 @@ if (target === 'windows') {
   await mkdir(path.join(root, 'DEBIAN'), { recursive: true });
   await mkdir(path.join(root, 'usr/bin'), { recursive: true });
   await mkdir(path.join(root, 'usr/share/applications'), { recursive: true });
+  await mkdir(path.join(root, 'usr/share/icons/hicolor/256x256/apps'), { recursive: true });
   await cp('build/bin/nohop-codex', path.join(root, 'usr/bin/nohop-codex'));
+  await cp('resources/appicon-256.png', path.join(root, 'usr/share/icons/hicolor/256x256/apps/nohop-codex.png'));
   await writeFile(path.join(root, 'DEBIAN/control'), `Package: nohop-codex\nVersion: ${pkg.version.replace('-', '~')}\nArchitecture: ${arch}\nMaintainer: IsolatedWolfLove\nDepends: libgtk-3-0, libwebkit2gtk-4.1-0\nSection: utils\nPriority: optional\nDescription: Persistent SSH terminal sessions for Linux and Windows servers\n`);
-  await writeFile(path.join(root, 'usr/share/applications/nohop-codex.desktop'), '[Desktop Entry]\nType=Application\nName=Nohop Codex\nExec=nohop-codex\nTerminal=false\nCategories=Development;Utility;\n');
+  await writeFile(path.join(root, 'usr/share/applications/nohop-codex.desktop'), '[Desktop Entry]\nType=Application\nName=Nohop Codex\nIcon=nohop-codex\nExec=nohop-codex\nTerminal=false\nCategories=Development;Utility;\n');
   run('dpkg-deb', ['--root-owner-group', '--build', root, `release/nohop-codex-${pkg.version}-linux-${arch}.deb`]);
 }

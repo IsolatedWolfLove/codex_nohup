@@ -9,6 +9,10 @@ type ConnectInput struct {
 	Password       string `json:"password"`
 	PrivateKeyPath string `json:"privateKeyPath"`
 	Passphrase     string `json:"passphrase"`
+	ProxyJumpHost  string `json:"proxyJumpHost"`
+	ProxyJumpPort  int    `json:"proxyJumpPort"`
+	ProxyJumpUser  string `json:"proxyJumpUser"`
+	ProxyJumpKey   string `json:"proxyJumpKey"`
 }
 type SSHHost struct {
 	Alias    string `json:"alias"`
@@ -16,6 +20,7 @@ type SSHHost struct {
 	User     string `json:"user,omitempty"`
 	Port     int    `json:"port"`
 	Identity string `json:"identity,omitempty"`
+	ProxyJump string `json:"proxyJump,omitempty"`
 }
 type ConnectionInfo struct {
 	Platform string `json:"platform"`

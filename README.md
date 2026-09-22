@@ -6,6 +6,7 @@
 - Windows 远端通过内嵌的 Go ConPTY 代理保持 PowerShell 会话。
 - 关闭标签页、断开 SSH 或退出应用只会 detach；远端进程继续运行。点击垃圾桶并确认才会结束会话。
 - 首页读取并展示 `~/.ssh/config` 主机，可直接编辑配置并点击连接。支持密码、私钥（含口令）、SSH Agent 和 keyboard-interactive 认证；需要密码或私钥口令时会弹窗询问。
+- 支持 SSH config 的单级 `ProxyJump`，跳板机和目标服务器分别使用各自的用户、端口与私钥配置。
 - Tailscale SSH check mode 返回登录地址时，会自动使用系统浏览器打开，完成 approve 后继续连接。首次连接仍需确认主机密钥指纹，已保存的主机密钥发生变化时会拒绝连接。
 
 ## 开发环境

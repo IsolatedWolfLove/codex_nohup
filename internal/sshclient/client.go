@@ -101,6 +101,7 @@ func (t *terminal) close() {
 
 type connection struct {
 	client    *ssh.Client
+	proxy     *ssh.Client
 	info      ConnectionInfo
 	agentPath string
 	done      chan struct{}
@@ -213,36 +214,43 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 		return ConnectionInfo{}, errors.New("缺少主机密钥校验器")
 	}
 	address := net.JoinHostPort(input.Host, strconv.Itoa(input.Port))
-	raw, err := net.DialTimeout("tcp", address, 20*time.Second)
-	if err != nil {
-		return ConnectionInfo{}, err
+	var raw net.Conn
+	var proxyClient *ssh.Client
+	if input.ProxyJumpHost != "" {
+		jumpInput := ConnectInput{Host: input.ProxyJumpHost, Port: input.ProxyJumpPort, Username: input.ProxyJumpUser, AuthMethod: "auto", PrivateKeyPath: input.ProxyJumpKey}
+		if jumpInput.Port == 0 { jumpInput.Port = 22 }
+		jumpAuths, cleanups, authErr := c.autoAuthMethods(jumpInput)
+		if authErr != nil { return ConnectionInfo{}, fmt.Errorf("跳板机认证配置失败：%w", authErr) }
+		for _, cleanup := range cleanups { defer cleanup() }
+		jumpAddress := net.JoinHostPort(jumpInput.Host, strconv.Itoa(jumpInput.Port))
+		jumpRaw, dialErr := net.DialTimeout("tcp", jumpAddress, 20*time.Second)
+		if dialErr != nil { return ConnectionInfo{}, fmt.Errorf("连接跳板机 %s 失败：%w", jumpAddress, dialErr) }
+		_ = jumpRaw.SetDeadline(time.Now().Add(2 * time.Minute))
+		jumpConn, jumpChannels, jumpRequests, handshakeErr := ssh.NewClientConn(jumpRaw, jumpAddress, c.sshClientConfig(jumpInput, jumpAuths))
+		if handshakeErr != nil { jumpRaw.Close(); return ConnectionInfo{}, fmt.Errorf("跳板机 SSH 握手失败：%w", handshakeErr) }
+		proxyClient = ssh.NewClient(jumpConn, jumpChannels, jumpRequests)
+		raw, err = proxyClient.Dial("tcp", address)
+		if err != nil { proxyClient.Close(); return ConnectionInfo{}, fmt.Errorf("通过跳板机连接 %s 失败：%w", address, err) }
+	} else {
+		raw, err = net.DialTimeout("tcp", address, 20*time.Second)
+		if err != nil { return ConnectionInfo{}, err }
 	}
 	_ = raw.SetDeadline(time.Now().Add(2 * time.Minute)) // Allows time for the first-host confirmation dialog.
-	keyboard := ssh.KeyboardInteractive(func(_ string, instruction string, questions []string, echoes []bool) ([]string, error) {
-		c.openURLs(instruction)
-		answers := make([]string, len(questions))
-		for i, question := range questions {
-			c.openURLs(question)
-			answer, err := c.credential("interactive", strings.TrimSpace(instruction+"\n"+question), i >= len(echoes) || !echoes[i])
-			if err != nil { return nil, err }
-			answers[i] = answer
-		}
-		return answers, nil
-	})
-	auths = append(auths, keyboard)
-	config := &ssh.ClientConfig{User: input.Username, Auth: auths, HostKeyCallback: c.hostKey, Timeout: 20 * time.Second, BannerCallback: func(message string) error { c.openURLs(message); return nil }}
+	config := c.sshClientConfig(input, auths)
 	sc, ch, req, err := ssh.NewClientConn(raw, address, config)
 	if err != nil {
 		raw.Close()
+		if proxyClient != nil { proxyClient.Close() }
 		return ConnectionInfo{}, err
 	}
 	_ = raw.SetDeadline(time.Time{})
 	client := ssh.NewClient(sc, ch, req)
-	conn := &connection{client: client, done: make(chan struct{})}
+	conn := &connection{client: client, proxy: proxyClient, done: make(chan struct{})}
 	ok := false
 	defer func() {
 		if !ok {
 			client.Close()
+			if proxyClient != nil { proxyClient.Close() }
 		}
 	}()
 	probe, err := execCommand(client, `powershell.exe -NoLogo -NoProfile -NonInteractive -Command "[Console]::Out.Write('nohop-windows')"`)
@@ -270,6 +278,49 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 	return info, nil
 }
 
+func (c *Client) autoAuthMethods(input ConnectInput) ([]ssh.AuthMethod, []func(), error) {
+	auths := []ssh.AuthMethod{}
+	cleanups := []func(){}
+	if input.PrivateKeyPath != "" {
+		data, err := os.ReadFile(input.PrivateKeyPath)
+		if err != nil { return nil, cleanups, err }
+		signer, err := ssh.ParsePrivateKey(data)
+		if _, ok := err.(*ssh.PassphraseMissingError); ok {
+			pass, askErr := c.credential("passphrase", "请输入私钥口令："+input.PrivateKeyPath, true)
+			if askErr != nil { return nil, cleanups, askErr }
+			signer, err = ssh.ParsePrivateKeyWithPassphrase(data, []byte(pass))
+		}
+		if err != nil { return nil, cleanups, err }
+		auths = append(auths, ssh.PublicKeys(signer))
+	}
+	if socket, err := dialAgent(); err == nil {
+		if signers, signErr := agent.NewClient(socket).Signers(); signErr == nil && len(signers) > 0 {
+			auths = append(auths, ssh.PublicKeys(signers...))
+			cleanups = append(cleanups, func() { _ = socket.Close() })
+		} else { _ = socket.Close() }
+	}
+	auths = append(auths, ssh.PasswordCallback(func() (string, error) {
+		return c.credential("password", fmt.Sprintf("请输入 %s@%s 的密码", input.Username, input.Host), true)
+	}))
+	return auths, cleanups, nil
+}
+
+func (c *Client) sshClientConfig(input ConnectInput, auths []ssh.AuthMethod) *ssh.ClientConfig {
+	keyboard := ssh.KeyboardInteractive(func(_ string, instruction string, questions []string, echoes []bool) ([]string, error) {
+		c.openURLs(instruction)
+		answers := make([]string, len(questions))
+		for i, question := range questions {
+			c.openURLs(question)
+			answer, err := c.credential("interactive", strings.TrimSpace(instruction+"\n"+question), i >= len(echoes) || !echoes[i])
+			if err != nil { return nil, err }
+			answers[i] = answer
+		}
+		return answers, nil
+	})
+	auths = append(auths, keyboard)
+	return &ssh.ClientConfig{User: input.Username, Auth: auths, HostKeyCallback: c.hostKey, Timeout: 20 * time.Second, BannerCallback: func(message string) error { c.openURLs(message); return nil }}
+}
+
 func (c *Client) openURLs(message string) {
 	for _, field := range strings.Fields(message) {
 		value := strings.TrimRight(field, ".,;)]}")
@@ -289,6 +340,7 @@ func (c *Client) openURLs(message string) {
 }
 func (c *Client) monitor(conn *connection) {
 	_ = conn.client.Wait()
+	if conn.proxy != nil { _ = conn.proxy.Close() }
 	close(conn.done)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -341,6 +393,7 @@ func (c *Client) disconnect() {
 	}
 	if conn != nil {
 		_ = conn.client.Close()
+		if conn.proxy != nil { _ = conn.proxy.Close() }
 	}
 }
 func (c *Client) Disconnect() { c.op.Lock(); defer c.op.Unlock(); c.disconnect() }
