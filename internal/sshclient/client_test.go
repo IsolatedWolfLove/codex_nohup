@@ -30,7 +30,7 @@ func TestShellCommands(t *testing.T) {
 	if parseBackend("noise\nscreen\n") != "screen" || parseBackend("") != "none" {
 		t.Fatal("backend")
 	}
-	items := parseSessions("tmux", "work\x012\x010\x01123\n")
+	items := parseSessions("tmux", "work|2|0|123\n")
 	if len(items) != 1 || items[0].Windows != 2 || items[0].Attached || items[0].CreatedAt != 123 {
 		t.Fatal(items)
 	}
