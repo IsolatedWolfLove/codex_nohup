@@ -36,8 +36,8 @@ func (a *App) startup(ctx context.Context) {
 				return err
 			}
 			return sshclient.HostKeyCallback(filepath.Join(base, "NohopCodex", "known_hosts"), func(host, fingerprint string) bool {
-				choice, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{Type: runtime.QuestionDialog, Title: "首次连接服务器", Message: fmt.Sprintf("服务器：%s\n主机密钥指纹：%s\n\n确认信任此服务器并保存密钥？", host, fingerprint), Buttons: []string{"信任并连接", "取消"}, DefaultButton: "取消", CancelButton: "取消"})
-				return err == nil && choice == "信任并连接"
+				_, err := a.requestCredential("hostkey", fmt.Sprintf("服务器：%s\n主机密钥指纹：%s\n\n确认信任此服务器并保存密钥？", host, fingerprint), false)
+				return err == nil
 			})(host, remoteAddr, key)
 		}, a.requestCredential, func(url string) { runtime.BrowserOpenURL(ctx, url); runtime.EventsEmit(ctx, "auth:url", url) })
 }
