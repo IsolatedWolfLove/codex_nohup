@@ -3,3 +3,8 @@ out/
 release/
 resources/agent/*.exe
 *.log
+
+/build/bin/
+/build/windows/
+/src/renderer/wailsjs/
+/build/deb-*/

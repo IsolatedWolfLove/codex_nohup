@@ -44,17 +44,3 @@ export type TerminalEvent =
   | { type: 'data'; terminalId: string; data: string }
   | { type: 'exit'; terminalId: string }
   | { type: 'error'; terminalId: string; message: string };
-
-export const IPC = {
-  connect: 'ssh:connect',
-  disconnect: 'ssh:disconnect',
-  listSessions: 'session:list',
-  openSession: 'session:open',
-  killSession: 'session:kill',
-  terminalWrite: 'terminal:write',
-  terminalResize: 'terminal:resize',
-  terminalClose: 'terminal:close',
-  terminalReady: 'terminal:ready',
-  terminalEvent: 'terminal:event',
-  chooseKey: 'file:chooseKey',
-} as const;

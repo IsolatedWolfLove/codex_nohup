@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "nohop-codex",
+  "outputfilename": "nohop-codex",
+  "frontend:dir": ".",
+  "frontend:install": "npm ci",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev:frontend",
+  "frontend:dev:serverUrl": "auto",
+  "wailsjsdir": "src/renderer",
+  "author": {
+    "name": "IsolatedWolfLove"
+  },
+  "info": {
+    "companyName": "IsolatedWolfLove",
+    "productName": "Nohop Codex",
+    "productVersion": "2.0.0",
+    "comments": "Persistent SSH terminal sessions"
+  }
+}

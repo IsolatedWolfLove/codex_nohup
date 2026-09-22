@@ -20,4 +20,7 @@ async function updateJson(file, updateLockRoot = false) {
 
 await updateJson('package.json');
 await updateJson('package-lock.json', true);
+const wails = JSON.parse(await readFile('wails.json', 'utf8'));
+wails.info.productVersion = version.split('-')[0];
+await writeFile('wails.json', `${JSON.stringify(wails, null, 2)}\n`);
 console.log(`构建版本已设置为 ${version}`);
