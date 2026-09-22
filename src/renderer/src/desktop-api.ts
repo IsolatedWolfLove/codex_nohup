@@ -9,11 +9,13 @@ type Backend = {
   ResizeTerminal: DesktopApi['resizeTerminal']; CloseTerminal: DesktopApi['closeTerminal'];
   ReadyTerminal: DesktopApi['readyTerminal']; ChoosePrivateKey: DesktopApi['choosePrivateKey'];
   ConfirmKill: DesktopApi['confirmKill'];
+  GetSSHConfig: DesktopApi['getSSHConfig']; SaveSSHConfig: DesktopApi['saveSSHConfig'];
+  ListSSHHosts: DesktopApi['listSSHHosts']; SubmitCredential: DesktopApi['submitCredential'];
 };
 declare global {
   interface Window {
     go: { main: { App: Backend } };
-    runtime: { EventsOn(name: string, callback: Parameters<DesktopApi['onTerminalEvent']>[0]): () => void };
+    runtime: { EventsOn(name: string, callback: (payload: any) => void): () => void };
   }
 }
 export const desktop: DesktopApi = {
@@ -28,6 +30,12 @@ export const desktop: DesktopApi = {
   readyTerminal: (id) => window.go.main.App.ReadyTerminal(id),
   choosePrivateKey: () => window.go.main.App.ChoosePrivateKey(),
   confirmKill: (name) => window.go.main.App.ConfirmKill(name),
+  getSSHConfig: () => window.go.main.App.GetSSHConfig(),
+  saveSSHConfig: (content) => window.go.main.App.SaveSSHConfig(content),
+  listSSHHosts: () => window.go.main.App.ListSSHHosts(),
+  submitCredential: (id, value, cancelled) => window.go.main.App.SubmitCredential(id, value, cancelled),
+  onCredentialRequest: (callback) => window.runtime.EventsOn('credential:request', callback),
+  onAuthUrl: (callback) => window.runtime.EventsOn('auth:url', callback),
   onTerminalEvent: (callback) => window.runtime.EventsOn('terminal:event', callback),
 };
 export function decodeTerminalData(data: string): Uint8Array {

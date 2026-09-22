@@ -1,6 +1,7 @@
 package sshclient
 
 type ConnectInput struct {
+	Alias          string `json:"alias"`
 	Host           string `json:"host"`
 	Port           int    `json:"port"`
 	Username       string `json:"username"`
@@ -8,6 +9,13 @@ type ConnectInput struct {
 	Password       string `json:"password"`
 	PrivateKeyPath string `json:"privateKeyPath"`
 	Passphrase     string `json:"passphrase"`
+}
+type SSHHost struct {
+	Alias    string `json:"alias"`
+	Host     string `json:"host"`
+	User     string `json:"user,omitempty"`
+	Port     int    `json:"port"`
+	Identity string `json:"identity,omitempty"`
 }
 type ConnectionInfo struct {
 	Platform string `json:"platform"`

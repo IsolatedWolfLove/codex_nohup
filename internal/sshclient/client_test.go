@@ -216,7 +216,7 @@ func inputFor(f *fakeServer) ConnectInput {
 func TestSSHSessionLifecycle(t *testing.T) {
 	f := startSSH(t, nil)
 	events := make(chan TerminalEvent, 64)
-	c := New(func(e TerminalEvent) { events <- e }, nil, ssh.InsecureIgnoreHostKey())
+	c := New(func(e TerminalEvent) { events <- e }, nil, ssh.InsecureIgnoreHostKey(), nil, nil)
 	defer c.Disconnect()
 	info, err := c.Connect(inputFor(f))
 	if err != nil || info.Backend != "tmux" {
@@ -291,7 +291,7 @@ func TestSSHPrivateKeyAndAuthFailure(t *testing.T) {
 	if err = os.WriteFile(path, pem.EncodeToMemory(block), 0600); err != nil {
 		t.Fatal(err)
 	}
-	c := New(func(TerminalEvent) {}, nil, ssh.InsecureIgnoreHostKey())
+	c := New(func(TerminalEvent) {}, nil, ssh.InsecureIgnoreHostKey(), nil, nil)
 	defer c.Disconnect()
 	input := inputFor(f)
 	input.Password = "wrong"

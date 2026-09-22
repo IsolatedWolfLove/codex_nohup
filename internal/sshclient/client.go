@@ -113,10 +113,18 @@ type Client struct {
 	emit        func(TerminalEvent)
 	agentBinary []byte
 	hostKey     ssh.HostKeyCallback
+	credential  func(kind, prompt string, secret bool) (string, error)
+	openURL     func(string)
 }
 
-func New(emit func(TerminalEvent), binary []byte, hostKey ssh.HostKeyCallback) *Client {
-	return &Client{emit: emit, agentBinary: binary, hostKey: hostKey, terminals: map[string]*terminal{}}
+func New(emit func(TerminalEvent), binary []byte, hostKey ssh.HostKeyCallback, credential func(string, string, bool) (string, error), openURL func(string)) *Client {
+	if credential == nil {
+		credential = func(string, string, bool) (string, error) { return "", errors.New("认证信息不可用") }
+	}
+	if openURL == nil {
+		openURL = func(string) {}
+	}
+	return &Client{emit: emit, agentBinary: binary, hostKey: hostKey, credential: credential, openURL: openURL, terminals: map[string]*terminal{}}
 }
 func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 	c.op.Lock()
@@ -131,10 +139,16 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 	if input.Port < 1 || input.Port > 65535 {
 		return ConnectionInfo{}, errors.New("端口必须在 1–65535 之间")
 	}
-	var auth ssh.AuthMethod
+	var auths []ssh.AuthMethod
 	switch input.AuthMethod {
 	case "password":
-		auth = ssh.Password(input.Password)
+		if input.Password != "" {
+			auths = append(auths, ssh.Password(input.Password))
+		} else {
+			auths = append(auths, ssh.PasswordCallback(func() (string, error) {
+				return c.credential("password", fmt.Sprintf("请输入 %s@%s 的密码", input.Username, input.Host), true)
+			}))
+		}
 	case "privateKey":
 		data, err := os.ReadFile(input.PrivateKeyPath)
 		if err != nil {
@@ -149,7 +163,7 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 		if err != nil {
 			return ConnectionInfo{}, err
 		}
-		auth = ssh.PublicKeys(signer)
+		auths = append(auths, ssh.PublicKeys(signer))
 	case "agent":
 		socket, err := dialAgent()
 		if err != nil {
@@ -164,7 +178,29 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 		if len(signers) == 0 {
 			return ConnectionInfo{}, errors.New("SSH Agent 中没有可用密钥")
 		}
-		auth = ssh.PublicKeys(signers...)
+		auths = append(auths, ssh.PublicKeys(signers...))
+	case "auto":
+		if input.PrivateKeyPath != "" {
+			data, err := os.ReadFile(input.PrivateKeyPath)
+			if err != nil { return ConnectionInfo{}, err }
+			signer, err := ssh.ParsePrivateKey(data)
+			if _, ok := err.(*ssh.PassphraseMissingError); ok {
+				pass, askErr := c.credential("passphrase", "请输入私钥口令："+input.PrivateKeyPath, true)
+				if askErr != nil { return ConnectionInfo{}, askErr }
+				signer, err = ssh.ParsePrivateKeyWithPassphrase(data, []byte(pass))
+			}
+			if err != nil { return ConnectionInfo{}, err }
+			auths = append(auths, ssh.PublicKeys(signer))
+		}
+		if socket, err := dialAgent(); err == nil {
+			defer socket.Close()
+			if signers, signErr := agent.NewClient(socket).Signers(); signErr == nil && len(signers) > 0 {
+				auths = append(auths, ssh.PublicKeys(signers...))
+			}
+		}
+		auths = append(auths, ssh.PasswordCallback(func() (string, error) {
+			return c.credential("password", fmt.Sprintf("请输入 %s@%s 的密码", input.Username, input.Host), true)
+		}))
 	default:
 		return ConnectionInfo{}, errors.New("不支持的认证方式")
 	}
@@ -177,7 +213,20 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 		return ConnectionInfo{}, err
 	}
 	_ = raw.SetDeadline(time.Now().Add(2 * time.Minute)) // Allows time for the first-host confirmation dialog.
-	sc, ch, req, err := ssh.NewClientConn(raw, address, &ssh.ClientConfig{User: input.Username, Auth: []ssh.AuthMethod{auth}, HostKeyCallback: c.hostKey, Timeout: 20 * time.Second})
+	keyboard := ssh.KeyboardInteractive(func(_ string, instruction string, questions []string, echoes []bool) ([]string, error) {
+		c.openURLs(instruction)
+		answers := make([]string, len(questions))
+		for i, question := range questions {
+			c.openURLs(question)
+			answer, err := c.credential("interactive", strings.TrimSpace(instruction+"\n"+question), i >= len(echoes) || !echoes[i])
+			if err != nil { return nil, err }
+			answers[i] = answer
+		}
+		return answers, nil
+	})
+	auths = append(auths, keyboard)
+	config := &ssh.ClientConfig{User: input.Username, Auth: auths, HostKeyCallback: c.hostKey, Timeout: 20 * time.Second, BannerCallback: func(message string) error { c.openURLs(message); return nil }}
+	sc, ch, req, err := ssh.NewClientConn(raw, address, config)
 	if err != nil {
 		raw.Close()
 		return ConnectionInfo{}, err
@@ -214,6 +263,13 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 	go c.monitor(conn)
 	go c.keepalive(conn)
 	return info, nil
+}
+
+func (c *Client) openURLs(message string) {
+	for _, field := range strings.Fields(message) {
+		value := strings.TrimRight(field, ".,;)]}")
+		if (strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://")) && c.openURL != nil { c.openURL(value) }
+	}
 }
 func (c *Client) monitor(conn *connection) {
 	_ = conn.client.Wait()

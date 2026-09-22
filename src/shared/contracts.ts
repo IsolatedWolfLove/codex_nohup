@@ -1,6 +1,7 @@
-export type AuthMethod = 'password' | 'privateKey' | 'agent';
+export type AuthMethod = 'auto' | 'password' | 'privateKey' | 'agent';
 
 export interface ConnectInput {
+  alias?: string;
   host: string;
   port: number;
   username: string;
@@ -9,6 +10,8 @@ export interface ConnectInput {
   privateKeyPath?: string;
   passphrase?: string;
 }
+export interface SSHHost { alias: string; host: string; user?: string; port: number; identity?: string }
+export interface CredentialRequest { id: string; kind: string; prompt: string; secret: boolean }
 
 export type RemotePlatform = 'linux' | 'windows';
 export type SessionBackend = 'tmux' | 'screen' | 'conpty' | 'none';

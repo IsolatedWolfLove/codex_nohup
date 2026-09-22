@@ -2,8 +2,8 @@ import { desktop, decodeTerminalData } from './desktop-api';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { KeyRound, LogOut, MonitorUp, Plus, RefreshCw, Server, SquareTerminal, Trash2, X } from 'lucide-react';
-import type { AuthMethod, ConnectionInfo, PersistentSession, TerminalEvent } from '../../shared/contracts';
+import { ChevronRight, FilePenLine, KeyRound, LogOut, MonitorUp, Plus, RefreshCw, Server, SquareTerminal, Trash2, X } from 'lucide-react';
+import type { AuthMethod, ConnectionInfo, CredentialRequest, PersistentSession, SSHHost, TerminalEvent } from '../../shared/contracts';
 
 interface OpenTerminal { id: string; name: string }
 
@@ -53,6 +53,22 @@ export function App() {
   const [authMethod, setAuthMethod] = useState<AuthMethod>('password'); const [password, setPassword] = useState('');
   const [privateKeyPath, setPrivateKeyPath] = useState(''); const [passphrase, setPassphrase] = useState('');
   const [newName, setNewName] = useState('nohop-work'); const [cwd, setCwd] = useState('');
+  const [hosts, setHosts] = useState<SSHHost[]>([]);
+  const [showManual, setShowManual] = useState(false);
+  const [configText, setConfigText] = useState<string | null>(null);
+  const [credential, setCredential] = useState<CredentialRequest | null>(null);
+  const [credentialValue, setCredentialValue] = useState('');
+
+  const loadHosts = useCallback(async () => {
+    try { setHosts(await desktop.listSSHHosts()); } catch (error) { setMessage(errorMessage(error)); }
+  }, []);
+
+  useEffect(() => { void loadHosts(); }, [loadHosts]);
+  useEffect(() => {
+    const offCredential = desktop.onCredentialRequest((request) => { setCredentialValue(''); setCredential(request); });
+    const offUrl = desktop.onAuthUrl(() => setMessage('已在浏览器打开认证页面，完成 approve 后会自动继续连接…'));
+    return () => { offCredential(); offUrl(); };
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!connected) return;
@@ -69,6 +85,31 @@ export function App() {
       setConnected(info); setPassword(''); setMessage(info.backend === 'none' ? '已连接，但 Linux 服务器未安装 tmux/screen。' : '已连接');
     } catch (error) { setMessage(errorMessage(error)); }
     finally { setBusy(false); }
+  }
+
+  async function connectHost(alias: string) {
+    setBusy(true); setMessage(`正在连接 ${alias}…`);
+    try {
+      const info = await desktop.connect({ alias, host: alias, port: 22, username: '', authMethod: 'auto' });
+      setConnected(info); setMessage(info.backend === 'none' ? '已连接，但 Linux 服务器未安装 tmux/screen。' : '已连接');
+    } catch (error) { setMessage(errorMessage(error)); }
+    finally { setBusy(false); }
+  }
+
+  async function editConfig() {
+    try { setConfigText(await desktop.getSSHConfig()); } catch (error) { setMessage(errorMessage(error)); }
+  }
+
+  async function saveConfig() {
+    if (configText === null) return;
+    try { await desktop.saveSSHConfig(configText); setConfigText(null); await loadHosts(); setMessage('SSH config 已保存'); }
+    catch (error) { setMessage(errorMessage(error)); }
+  }
+
+  function answerCredential(cancelled: boolean) {
+    if (!credential) return;
+    void desktop.submitCredential(credential.id, credentialValue, cancelled);
+    setCredential(null); setCredentialValue('');
   }
 
   async function open(name: string) {
@@ -103,7 +144,9 @@ export function App() {
 
   if (!connected) return <main className="login-shell">
     <section className="brand-panel"><div className="brand-mark"><MonitorUp size={28} /></div><h1>Nohop Codex</h1><p>关掉电脑，任务继续跑。回来后点击原来的会话，立即接着工作。</p><div className="feature"><SquareTerminal size={18} /><span>Linux：tmux / screen</span></div><div className="feature"><Server size={18} /><span>Windows：原生 ConPTY</span></div></section>
-    <form className="connect-card" onSubmit={connect}><h2>连接服务器</h2><label>主机<input value={host} onChange={(e) => setHost(e.target.value)} placeholder="server.example.com" required /></label><div className="row"><label>用户名<input value={username} onChange={(e) => setUsername(e.target.value)} required /></label><label className="port">端口<input type="number" value={port} onChange={(e) => setPort(Number(e.target.value))} /></label></div><label>认证方式<select value={authMethod} onChange={(e) => setAuthMethod(e.target.value as AuthMethod)}><option value="password">密码</option><option value="privateKey">私钥</option><option value="agent">SSH Agent</option></select></label>{authMethod === 'password' && <label>密码<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>}{authMethod === 'privateKey' && <><label>私钥<div className="file-field"><input value={privateKeyPath} onChange={(e) => setPrivateKeyPath(e.target.value)} /><button type="button" onClick={async () => { const value = await desktop.choosePrivateKey(); if (value) setPrivateKeyPath(value); }}><KeyRound size={16} /></button></div></label><label>私钥口令（可选）<input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} /></label></>}<button className="primary" disabled={busy}>{busy ? '连接中…' : '连接'}</button>{message && <p className="message">{message}</p>}</form>
+    <section className="connect-card"><div className="connect-title"><div><h2>Remote SSH</h2><small>选择 ~/.ssh/config 中的主机</small></div><button className="icon" title="编辑 SSH config" onClick={() => void editConfig()}><FilePenLine size={18} /></button></div><div className="host-list">{hosts.map((item) => <button className="host-card" key={item.alias} disabled={busy} onClick={() => void connectHost(item.alias)}><Server size={18} /><span><strong>{item.alias}</strong><small>{item.user ? `${item.user}@` : ''}{item.host}:{item.port}</small></span><ChevronRight size={17} /></button>)}{hosts.length === 0 && <div className="hosts-empty">SSH config 中还没有主机<br/><button onClick={() => void editConfig()}>创建配置</button></div>}</div><button className="manual-toggle" onClick={() => setShowManual((value) => !value)}>{showManual ? '收起手动连接' : '手动连接…'}</button>{showManual && <form className="manual-form" onSubmit={connect}><label>主机<input value={host} onChange={(e) => setHost(e.target.value)} placeholder="server.example.com" required /></label><div className="row"><label>用户名<input value={username} onChange={(e) => setUsername(e.target.value)} required /></label><label className="port">端口<input type="number" value={port} onChange={(e) => setPort(Number(e.target.value))} /></label></div><label>认证方式<select value={authMethod} onChange={(e) => setAuthMethod(e.target.value as AuthMethod)}><option value="password">密码</option><option value="privateKey">私钥</option><option value="agent">SSH Agent</option></select></label>{authMethod === 'password' && <label>密码（留空则连接时弹窗）<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>}{authMethod === 'privateKey' && <><label>私钥<div className="file-field"><input value={privateKeyPath} onChange={(e) => setPrivateKeyPath(e.target.value)} /><button type="button" onClick={async () => { const value = await desktop.choosePrivateKey(); if (value) setPrivateKeyPath(value); }}><KeyRound size={16} /></button></div></label><label>私钥口令（可选）<input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} /></label></>}<button className="primary" disabled={busy}>{busy ? '连接中…' : '连接'}</button></form>}{message && <p className="message">{message}</p>}</section>
+    {configText !== null && <div className="modal-backdrop"><section className="config-modal"><header><div><h2>SSH config</h2><small>~/.ssh/config</small></div><button className="icon" onClick={() => setConfigText(null)}><X size={18}/></button></header><textarea value={configText} onChange={(event) => setConfigText(event.target.value)} spellCheck={false} placeholder={'Host my-server\n  HostName 192.168.1.10\n  User ubuntu\n  IdentityFile ~/.ssh/id_ed25519'} /><footer><button onClick={() => setConfigText(null)}>取消</button><button className="primary" onClick={() => void saveConfig()}>保存配置</button></footer></section></div>}
+    {credential && <div className="modal-backdrop credential-layer"><form className="credential-modal" onSubmit={(event) => { event.preventDefault(); answerCredential(false); }}><KeyRound size={24}/><h3>{credential.kind === 'passphrase' ? 'SSH 私钥口令' : 'SSH 认证'}</h3><p>{credential.prompt}</p><input autoFocus type={credential.secret ? 'password' : 'text'} value={credentialValue} onChange={(event) => setCredentialValue(event.target.value)} /><div><button type="button" onClick={() => answerCredential(true)}>取消</button><button className="primary">确认</button></div></form></div>}
   </main>;
 
   return <main className="workspace"><aside><header><div><span className="eyebrow">CONNECTED</span><strong>{connected.host}</strong><small>{connected.platform} · {connected.backend}</small></div><button className="icon" title="断开连接" onClick={() => void disconnect()}><LogOut size={18} /></button></header><section className="new-session"><label>会话名称<input value={newName} onChange={(e) => setNewName(e.target.value)} /></label><label>工作目录（可选）<input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder={connected.platform === 'windows' ? 'C:\\work' : '/home/user/work'} /></label><button className="primary" disabled={busy || connected.backend === 'none'} onClick={() => void open(newName)}><Plus size={17} /> 新建并进入</button></section><div className="session-heading"><span>远端会话</span><button className="icon" onClick={() => void refresh()}><RefreshCw size={16} /></button></div><div className="session-list">{sessions.map((session) => <div className="session-card" key={session.name} onClick={() => void open(session.name)}><SquareTerminal size={18} /><div><strong>{session.name}</strong><small>{session.attached ? '已连接' : '等待重新进入'}{session.windows ? ` · ${session.windows} 窗口` : ''}</small></div><button className="delete" title="结束会话" onClick={(event) => { event.stopPropagation(); void kill(session.name); }}><Trash2 size={15} /></button></div>)}{sessions.length === 0 && <p className="empty">还没有持久会话</p>}</div></aside><section className="terminal-area"><nav>{terminals.map((item) => <button key={item.id} className={activeId === item.id ? 'active' : ''} onClick={() => setActiveId(item.id)}><span>{item.name}</span><X size={14} onClick={(event) => { event.stopPropagation(); void closeTerminal(item.id); }} /></button>)}</nav><div className="terminal-stack">{terminals.map((item) => <TerminalView key={item.id} item={item} active={activeId === item.id} />)}{terminals.length === 0 && <div className="terminal-empty"><SquareTerminal size={48} /><h2>选择一个会话</h2><p>点击左侧会话即可进入；关闭这个窗口不会结束远端任务。</p></div>}</div>{message && <div className="status">{message}</div>}</section></main>;

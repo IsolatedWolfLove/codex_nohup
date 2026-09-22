@@ -30,3 +30,33 @@ aside header div { display: grid; gap: 3px; min-width: 0; } aside header strong 
 .terminal-area { min-width: 0; min-height: 0; display: grid; grid-template-rows: 43px 1fr auto; }.terminal-area nav { display: flex; align-items: end; overflow-x: auto; background: #0e141a; border-bottom: 1px solid #202a34; padding: 0 8px; }.terminal-area nav button { height: 36px; min-width: 130px; max-width: 210px; padding: 0 9px 0 13px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-radius: 8px 8px 0 0; background: transparent; color: #768692; cursor: pointer; }.terminal-area nav button.active { background: #080b10; color: #dbe5ee; border: 1px solid #202a34; border-bottom-color: #080b10; }.terminal-area nav span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .terminal-stack { position: relative; min-height: 0; }.terminal-host { display: none; position: absolute; inset: 0; padding: 12px 8px 8px 12px; background: #080b10; }.terminal-host.active { display: block; }.terminal-host .xterm { height: 100%; }.terminal-empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; color: #53616c; text-align: center; }.terminal-empty h2 { color: #81909b; margin: 18px 0 4px; }.terminal-empty p { max-width: 430px; font-size: 13px; }.status { padding: 7px 12px; background: #17150f; color: #deb86f; font-size: 12px; border-top: 1px solid #302a1d; }
 @media (max-width: 850px) { .login-shell { grid-template-columns: 1fr; overflow: auto; padding: 28px; }.brand-panel > p, .feature { display: none; }.brand-panel h1 { font-size: 42px; margin: 14px 0; }.workspace { grid-template-columns: 260px 1fr; } }
+
+.connect-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+.connect-title h2 { margin:0 0 4px; }
+.connect-title small, .config-modal small { color:#71818d; }
+.host-list { display:grid; gap:8px; max-height:310px; overflow:auto; }
+.host-card { display:grid; grid-template-columns:24px 1fr 18px; align-items:center; gap:10px; width:100%; padding:12px; border:1px solid #293744; border-radius:10px; background:#0b1117; text-align:left; cursor:pointer; }
+.host-card:hover { border-color:#4eb9af; background:#111d23; }
+.host-card:disabled { opacity:.5; }
+.host-card > svg:first-child { color:#5fd3c7; }
+.host-card span { display:grid; gap:3px; min-width:0; }
+.host-card strong, .host-card small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.host-card small { color:#71818d; }
+.hosts-empty { padding:35px 10px; text-align:center; color:#71818d; line-height:1.7; }
+.hosts-empty button, .manual-toggle { color:#6ed8cd; background:transparent; border:0; cursor:pointer; }
+.manual-toggle { width:100%; margin-top:14px; padding:7px; }
+.manual-form { border-top:1px solid #24313d; margin-top:7px; padding-top:17px; }
+.modal-backdrop { position:fixed; inset:0; z-index:50; display:grid; place-items:center; padding:28px; background:#030609c9; backdrop-filter:blur(5px); }
+.config-modal { width:min(780px, 92vw); height:min(680px, 86vh); display:grid; grid-template-rows:auto 1fr auto; background:#10161d; border:1px solid #33424f; border-radius:16px; box-shadow:0 30px 100px #000c; overflow:hidden; }
+.config-modal header { display:flex; justify-content:space-between; align-items:center; padding:18px 20px; border-bottom:1px solid #293744; }
+.config-modal h2 { margin:0 0 3px; }
+.config-modal textarea { resize:none; border:0; border-radius:0; padding:18px 20px; outline:none; color:#dce8ef; background:#080d12; font:14px/1.65 'JetBrains Mono','Cascadia Code',monospace; }
+.config-modal footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 18px; border-top:1px solid #293744; }
+.config-modal footer button, .credential-modal div button { width:auto; border:1px solid #344553; border-radius:8px; padding:9px 16px; background:#17212a; cursor:pointer; }
+.config-modal footer .primary, .credential-modal div .primary { border:0; background:#5fd3c7; }
+.credential-layer { z-index:60; }
+.credential-modal { width:min(430px, 90vw); padding:28px; border:1px solid #33424f; border-radius:16px; background:#10161d; box-shadow:0 25px 90px #000d; }
+.credential-modal > svg { color:#5fd3c7; }
+.credential-modal h3 { margin:14px 0 7px; }
+.credential-modal p { color:#9dadba; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.5; }
+.credential-modal div { display:flex; justify-content:flex-end; gap:9px; margin-top:18px; }
