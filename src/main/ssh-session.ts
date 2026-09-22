@@ -1,0 +1,196 @@
+import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { app } from 'electron';
+import { Client, type ClientChannel, type ConnectConfig, type SFTPWrapper } from 'ssh2';
+import type { ConnectInput, ConnectionInfo, CreateSessionInput, PersistentSession, RemotePlatform, SessionBackend, TerminalEvent, TerminalOpened } from '../shared/contracts';
+import { attachCommand, killCommand, listCommand, normalizeSessionName, parseBackend, parseSessions, supportProbe } from './persistent-shell';
+
+interface TerminalHandle { channel: ClientChannel; sessionName: string; buffer: string; ready: boolean }
+interface CommandResult { stdout: string; stderr: string; code: number | null }
+
+const WINDOWS_AGENT_PATH_COMMAND = "$p=Join-Path $env:LOCALAPPDATA 'NohopCodex\\nohop-agent.exe'; [Console]::Out.Write($p)";
+
+function psQuote(value: string): string { return `'${value.replace(/'/g, "''")}'`; }
+function psCommand(script: string): string {
+  return `powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${Buffer.from(script, 'utf16le').toString('base64')}`;
+}
+
+export class SshSession {
+  private client: Client | null = null;
+  private info: ConnectionInfo | null = null;
+  private terminals = new Map<string, TerminalHandle>();
+  private agentPath: string | null = null;
+
+  constructor(private readonly emit: (event: TerminalEvent) => void) {}
+
+  async connect(input: ConnectInput): Promise<ConnectionInfo> {
+    await this.disconnect();
+    const config: ConnectConfig = { host: input.host, port: input.port || 22, username: input.username, readyTimeout: 20_000, keepaliveInterval: 10_000, keepaliveCountMax: 3 };
+    if (input.authMethod === 'password') config.password = input.password;
+    if (input.authMethod === 'agent') config.agent = process.env.SSH_AUTH_SOCK;
+    if (input.authMethod === 'privateKey') {
+      if (!input.privateKeyPath) throw new Error('请选择私钥文件');
+      config.privateKey = await readFile(input.privateKeyPath);
+      if (input.passphrase) config.passphrase = input.passphrase;
+    }
+    const client = new Client();
+    await new Promise<void>((resolve, reject) => {
+      client.once('ready', resolve).once('error', reject).connect(config);
+    });
+    client.on('error', () => undefined);
+    client.on('close', () => {
+      for (const [id] of this.terminals) this.emit({ type: 'exit', terminalId: id });
+      this.terminals.clear();
+      this.client = null;
+    });
+    this.client = client;
+    const platform = await this.detectPlatform();
+    const backend: SessionBackend = platform === 'windows' ? 'conpty' : parseBackend((await this.exec(supportProbe())).stdout);
+    this.info = { platform, backend, host: input.host };
+    return this.info;
+  }
+
+  async disconnect(): Promise<void> {
+    for (const terminal of this.terminals.values()) terminal.channel.close();
+    this.terminals.clear();
+    this.client?.end();
+    this.client = null;
+    this.info = null;
+    this.agentPath = null;
+  }
+
+  async listSessions(): Promise<PersistentSession[]> {
+    const info = this.requireInfo();
+    if (info.platform === 'windows') {
+      const output = await this.runWindowsAgent(['list']);
+      const parsed = JSON.parse(output.stdout.trim() || '[]') as Array<Omit<PersistentSession, 'backend'>>;
+      return parsed.map((session) => ({ ...session, backend: 'conpty' }));
+    }
+    const command = listCommand(info.backend);
+    if (!command) return [];
+    return parseSessions(info.backend, (await this.exec(command)).stdout);
+  }
+
+  async openSession(input: CreateSessionInput): Promise<TerminalOpened> {
+    const info = this.requireInfo();
+    const name = normalizeSessionName(input.name);
+    let command: string;
+    if (info.platform === 'windows') {
+      const agent = await this.ensureWindowsAgent();
+      const args = ['attach', '--name', name, '--cols', String(input.cols ?? 120), '--rows', String(input.rows ?? 32)];
+      if (input.cwd?.trim()) args.push('--cwd', input.cwd.trim());
+      command = psCommand(`& ${psQuote(agent)} ${args.map(psQuote).join(' ')}`);
+    } else {
+      command = attachCommand(info.backend, name, input.cwd);
+    }
+    const channel = await this.execPty(command, input.cols ?? 120, input.rows ?? 32);
+    const terminalId = randomUUID();
+    const handle: TerminalHandle = { channel, sessionName: name, buffer: '', ready: false };
+    this.terminals.set(terminalId, handle);
+    const output = (chunk: Buffer | string) => {
+      const data = chunk.toString();
+      if (handle.ready) this.emit({ type: 'data', terminalId, data });
+      else handle.buffer = (handle.buffer + data).slice(-2 * 1024 * 1024);
+    };
+    channel.on('data', output);
+    channel.stderr.on('data', output);
+    channel.on('error', (error: Error) => this.emit({ type: 'error', terminalId, message: error.message }));
+    channel.on('close', () => {
+      if (this.terminals.delete(terminalId)) this.emit({ type: 'exit', terminalId });
+    });
+    return { terminalId, sessionName: name, backend: info.backend };
+  }
+
+  async writeTerminal(id: string, data: string): Promise<void> {
+    const terminal = this.terminals.get(id);
+    if (!terminal) throw new Error('终端已经断开');
+    terminal.channel.write(data);
+  }
+
+  async readyTerminal(id: string): Promise<string> {
+    const terminal = this.terminals.get(id);
+    if (!terminal) return '';
+    const output = terminal.buffer;
+    terminal.buffer = '';
+    terminal.ready = true;
+    return output;
+  }
+
+  async resizeTerminal(id: string, cols: number, rows: number): Promise<void> {
+    const terminal = this.terminals.get(id);
+    if (!terminal) return;
+    terminal.channel.setWindow(rows, cols, 0, 0);
+    if (this.info?.platform === 'windows') void this.runWindowsAgent(['resize', '--name', terminal.sessionName, '--cols', String(cols), '--rows', String(rows)]).catch(() => undefined);
+  }
+
+  async closeTerminal(id: string): Promise<void> {
+    const terminal = this.terminals.get(id);
+    this.terminals.delete(id);
+    terminal?.channel.close();
+  }
+
+  async killSession(name: string): Promise<void> {
+    const info = this.requireInfo();
+    const result = info.platform === 'windows' ? await this.runWindowsAgent(['kill', '--name', name]) : await this.exec(killCommand(info.backend, name));
+    if (result.code !== 0) throw new Error(result.stderr.trim() || `无法结束会话 ${name}`);
+  }
+
+  private requireClient(): Client { if (!this.client) throw new Error('尚未连接服务器'); return this.client; }
+  private requireInfo(): ConnectionInfo { if (!this.info) throw new Error('尚未连接服务器'); return this.info; }
+
+  private async detectPlatform(): Promise<RemotePlatform> {
+    const probe = "powershell.exe -NoLogo -NoProfile -NonInteractive -Command \"[Console]::Out.Write('nohop-windows')\"";
+    const result = await this.exec(probe);
+    return result.code === 0 && result.stdout.includes('nohop-windows') ? 'windows' : 'linux';
+  }
+
+  private exec(command: string): Promise<CommandResult> {
+    return new Promise((resolve, reject) => this.requireClient().exec(command, (error, stream) => {
+      if (error) return reject(error);
+      let stdout = ''; let stderr = '';
+      stream.on('data', (chunk: Buffer | string) => { stdout += chunk.toString(); });
+      stream.stderr.on('data', (chunk: Buffer | string) => { stderr += chunk.toString(); });
+      stream.once('error', reject);
+      stream.once('close', (code: number | null) => resolve({ stdout, stderr, code }));
+    }));
+  }
+
+  private execPty(command: string, cols: number, rows: number): Promise<ClientChannel> {
+    return new Promise((resolve, reject) => this.requireClient().exec(command, { pty: { term: 'xterm-256color', cols, rows } }, (error, stream) => error ? reject(error) : resolve(stream)));
+  }
+
+  private async ensureWindowsAgent(): Promise<string> {
+    if (this.agentPath) return this.agentPath;
+    const pathResult = await this.exec(psCommand(WINDOWS_AGENT_PATH_COMMAND));
+    if (pathResult.code !== 0 || !pathResult.stdout.trim()) throw new Error('无法确定 Windows 代理目录');
+    const remotePath = pathResult.stdout.trim();
+    const check = await this.exec(psCommand(`if (Test-Path ${psQuote(remotePath)}) { exit 0 } else { exit 1 }`));
+    if (check.code !== 0) {
+      const localPath = app.isPackaged
+        ? path.join(process.resourcesPath, 'resources', 'agent', 'nohop-agent-windows-amd64.exe')
+        : path.join(app.getAppPath(), 'resources', 'agent', 'nohop-agent-windows-amd64.exe');
+      if (!existsSync(localPath)) throw new Error('缺少 Windows ConPTY 代理。请先运行 npm run agent:win，或使用包含代理的发行包。');
+      await this.exec(psCommand(`New-Item -ItemType Directory -Force -Path (Split-Path ${psQuote(remotePath)}) | Out-Null`));
+      await this.fastPut(localPath, remotePath.replace(/\\/g, '/'));
+    }
+    this.agentPath = remotePath;
+    const ensure = await this.runWindowsAgent(['ensure']);
+    if (ensure.code !== 0) throw new Error(ensure.stderr.trim() || 'Windows 会话代理启动失败');
+    return remotePath;
+  }
+
+  private async runWindowsAgent(args: string[]): Promise<CommandResult> {
+    const agent = this.agentPath ?? await this.ensureWindowsAgent();
+    const expression = `& ${psQuote(agent)} ${args.map(psQuote).join(' ')}`;
+    return this.exec(psCommand(expression));
+  }
+
+  private fastPut(localPath: string, remotePath: string): Promise<void> {
+    return new Promise((resolve, reject) => this.requireClient().sftp((error, sftp: SFTPWrapper) => {
+      if (error) return reject(error);
+      sftp.fastPut(localPath, remotePath, (uploadError) => { sftp.end(); uploadError ? reject(uploadError) : resolve(); });
+    }));
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "name": "nohop-codex",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Persistent SSH terminal sessions for Linux and Windows",
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "npm run typecheck && electron-vite build",
+    "agent:win": "node scripts/build-agent.mjs windows amd64",
+    "package:linux": "npm run build && node scripts/package.mjs --linux AppImage --x64",
+    "package:windows": "npm run build && node scripts/package.mjs --win nsis --x64",
+    "package": "npm run build && node scripts/package.mjs"
+  },
+  "dependencies": {
+    "ssh2": "^1.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.3",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@types/ssh2": "^1.15.5",
+    "@vitejs/plugin-react": "^4.6.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "electron": "^42.5.1",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^3.1.0",
+    "lucide-react": "^0.525.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^4.1.10"
+  },
+  "build": {
+    "appId": "com.nohop.codex",
+    "productName": "Nohop Codex",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools"
+    }
+  },
+  "allowScripts": {
+    "cpu-features@0.0.10": true,
+    "electron@42.11.6": true,
+    "esbuild@0.25.12": true,
+    "ssh2@1.17.0": true
+  }
+}
