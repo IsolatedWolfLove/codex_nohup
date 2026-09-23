@@ -447,19 +447,16 @@ func (c *Client) ensureAgent(conn *connection) (string, error) {
 	if conn.agentPath != "" {
 		return conn.agentPath, nil
 	}
-	result, err := checked(execCommand(conn.client, psCommand(`$p=Join-Path $env:LOCALAPPDATA 'NohopCodex\nohop-agent.exe'; [Console]::Out.Write($p)`)))
+	result, err := checked(execCommand(conn.client, psCommand(`$p=Join-Path $env:LOCALAPPDATA 'NohopCodex\nohop-agent.exe'; [Console]::Out.WriteLine($p); [Console]::Out.Write([int](Test-Path -LiteralPath $p))`)))
 	if err != nil {
 		return "", err
 	}
-	remote := strings.TrimSpace(result.stdout)
-	if remote == "" {
+	parts := strings.SplitN(strings.ReplaceAll(strings.TrimSpace(result.stdout), "\r\n", "\n"), "\n", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || (parts[1] != "0" && parts[1] != "1") {
 		return "", errors.New("无法确定 Windows 代理目录")
 	}
-	check, err := execCommand(conn.client, psCommand("if (Test-Path "+psQuote(remote)+") { exit 0 } else { exit 1 }"))
-	if err != nil {
-		return "", err
-	}
-	if check.code != 0 {
+	remote := strings.TrimSpace(parts[0])
+	if parts[1] == "0" {
 		if len(c.agentBinary) == 0 {
 			return "", errors.New("缺少内嵌 Windows ConPTY 代理，请重新构建应用")
 		}
@@ -488,9 +485,8 @@ func (c *Client) ensureAgent(conn *connection) (string, error) {
 			return "", err
 		}
 	}
-	if _, err = checked(execCommand(conn.client, psCommand("& "+psQuote(remote)+" 'ensure'"))); err != nil {
-		return "", err
-	}
+	// Every agent operation starts the daemon when needed; the following list or
+	// attach command also verifies that the binary can run.
 	conn.agentPath = remote
 	return remote, nil
 }
@@ -581,8 +577,12 @@ func (c *Client) OpenSession(input CreateSessionInput) (TerminalOpened, error) {
 			session.Close()
 		}
 	}()
-	if err = session.RequestPty("xterm-256color", rows, cols, ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 14400, ssh.TTY_OP_OSPEED: 14400}); err != nil {
-		return TerminalOpened{}, err
+	// The Windows agent owns a ConPTY. An additional SSH PTY can turn one Enter
+	// into CR+LF, which PowerShell reads as an extra continuation line.
+	if conn.info.Platform != "windows" {
+		if err = session.RequestPty("xterm-256color", rows, cols, ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 14400, ssh.TTY_OP_OSPEED: 14400}); err != nil {
+			return TerminalOpened{}, err
+		}
 	}
 	stdin, err := session.StdinPipe()
 	if err != nil {
