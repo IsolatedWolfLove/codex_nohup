@@ -2,7 +2,7 @@ import { desktop, decodeTerminalData } from './desktop-api';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { ChevronRight, FilePenLine, KeyRound, LogOut, Plus, RefreshCw, Server, SquareTerminal, Trash2, X } from 'lucide-react';
+import { ChevronRight, Copy, FilePenLine, KeyRound, LogOut, ClipboardPaste, Plus, RefreshCw, Server, SquareTerminal, Trash2, X } from 'lucide-react';
 import type { AuthMethod, ConnectionInfo, CredentialRequest, PersistentSession, SSHHost, TerminalEvent } from '../../shared/contracts';
 
 interface OpenTerminal { id: string; name: string }
@@ -15,6 +15,41 @@ function TerminalView({ item, active }: { item: OpenTerminal; active: boolean })
   const host = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const fit = useRef<FitAddon | null>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; canCopy: boolean } | null>(null);
+
+  const copySelection = useCallback(() => {
+    const instance = terminal.current;
+    const selected = instance?.getSelection();
+    if (selected) void desktop.clipboardSetText(selected).catch((error) => instance?.writeln(`\r\n${errorMessage(error)}`));
+    setContextMenu(null);
+    instance?.focus();
+  }, []);
+
+  const pasteClipboard = useCallback(() => {
+    const instance = terminal.current;
+    setContextMenu(null);
+    instance?.focus();
+    void desktop.clipboardGetText().then((value) => {
+      if (value && terminal.current === instance) instance?.paste(value);
+    }).catch((error) => instance?.writeln(`\r\n${errorMessage(error)}`));
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const closeOnPointer = (event: PointerEvent) => {
+      if (!menu.current?.contains(event.target as Node)) setContextMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setContextMenu(null);
+    };
+    window.addEventListener('pointerdown', closeOnPointer);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.removeEventListener('pointerdown', closeOnPointer);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [contextMenu]);
 
   useEffect(() => {
     if (!host.current) return;
@@ -27,14 +62,15 @@ function TerminalView({ item, active }: { item: OpenTerminal; active: boolean })
       const copy = (event.ctrlKey && event.shiftKey && event.code === 'KeyC') || (event.ctrlKey && event.code === 'Insert');
       const paste = (event.ctrlKey && event.shiftKey && event.code === 'KeyV') || (event.shiftKey && event.code === 'Insert');
       if (copy) {
-        const selected = instance.getSelection();
-        if (selected) void desktop.clipboardSetText(selected).catch((error) => instance.writeln(`\r\n${errorMessage(error)}`));
+        event.preventDefault();
+        event.stopPropagation();
+        copySelection();
         return false;
       }
       if (paste) {
-        void desktop.clipboardGetText().then((value) => {
-          if (value) return desktop.writeTerminal(item.id, value);
-        }).catch((error) => instance.writeln(`\r\n${errorMessage(error)}`));
+        event.preventDefault();
+        event.stopPropagation();
+        pasteClipboard();
         return false;
       }
       return true;
@@ -53,10 +89,26 @@ function TerminalView({ item, active }: { item: OpenTerminal; active: boolean })
     });
     observer.observe(host.current);
     return () => { observer.disconnect(); unsubscribe(); input.dispose(); instance.dispose(); terminal.current = null; };
-  }, [item.id]);
+  }, [item.id, copySelection, pasteClipboard]);
 
-  useEffect(() => { if (active) { fit.current?.fit(); terminal.current?.focus(); } }, [active]);
-  return <div ref={host} className={`terminal-host ${active ? 'active' : ''}`} />;
+  useEffect(() => {
+    if (active) { fit.current?.fit(); terminal.current?.focus(); }
+    else setContextMenu(null);
+  }, [active]);
+  return <div ref={host} className={`terminal-host ${active ? 'active' : ''}`} onContextMenu={(event) => {
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setContextMenu({
+      x: Math.max(0, Math.min(event.clientX - bounds.left, bounds.width - 150)),
+      y: Math.max(0, Math.min(event.clientY - bounds.top, bounds.height - 86)),
+      canCopy: terminal.current?.hasSelection() ?? false,
+    });
+  }}>
+    {contextMenu && <div ref={menu} className="terminal-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu">
+      <button type="button" role="menuitem" disabled={!contextMenu.canCopy} onClick={copySelection}><Copy size={15} />复制</button>
+      <button type="button" role="menuitem" onClick={pasteClipboard}><ClipboardPaste size={15} />粘贴</button>
+    </div>}
+  </div>;
 }
 
 export function App() {
