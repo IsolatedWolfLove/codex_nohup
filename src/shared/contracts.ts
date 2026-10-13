@@ -47,6 +47,8 @@ export interface TerminalOpened {
   backend: SessionBackend;
 }
 
+export interface TerminalScrollState { lines: number; position: number; rows: number }
+
 export type TerminalEvent =
   | { type: 'data'; terminalId: string; data: string }
   | { type: 'exit'; terminalId: string }

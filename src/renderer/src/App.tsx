@@ -1,11 +1,12 @@
 import { desktop, decodeTerminalData } from './desktop-api';
+import { bindTerminalScrolling } from './terminal-scrolling';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import { ChevronRight, Copy, FilePenLine, KeyRound, LogOut, ClipboardPaste, Plus, RefreshCw, Server, SquareTerminal, Trash2, X } from 'lucide-react';
-import type { AuthMethod, ConnectionInfo, CredentialRequest, PersistentSession, SSHHost, TerminalEvent } from '../../shared/contracts';
+import type { AuthMethod, ConnectionInfo, CredentialRequest, PersistentSession, SSHHost, TerminalEvent, TerminalScrollState } from '../../shared/contracts';
 
-interface OpenTerminal { id: string; name: string }
+interface OpenTerminal { id: string; name: string; backend: string }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -16,6 +17,11 @@ function TerminalView({ item, active }: { item: OpenTerminal; active: boolean })
   const surface = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const fit = useRef<(() => void) | null>(null);
+  const scrolling = useRef<ReturnType<typeof bindTerminalScrolling> | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const [scrollState, setScrollState] = useState<TerminalScrollState>({ lines: 0, position: 0, rows: 24 });
+  const [scrollError, setScrollError] = useState('');
   const menu = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; canCopy: boolean } | null>(null);
 
@@ -68,15 +74,10 @@ function TerminalView({ item, active }: { item: OpenTerminal; active: boolean })
       });
     };
     terminal.current = instance; fit.current = scheduleFit;
-    // xterm's root mousedown handler cancels native scrollbar dragging.
-    // Keep scrollbar presses out of its selection and mouse-reporting handlers.
-    const viewport = instance.element?.querySelector<HTMLElement>('.xterm-viewport');
-    const preserveScrollbarDrag = (event: MouseEvent) => {
-      if (!viewport) return;
-      const bounds = viewport.getBoundingClientRect();
-      if (event.clientX >= bounds.left + viewport.clientWidth) event.stopPropagation();
-    };
-    viewport?.addEventListener('mousedown', preserveScrollbarDrag);
+    const scroller = bindTerminalScrolling(instance, surface.current, item.backend, item.id, desktop,
+      (state) => { setScrollState(state); setScrollError(''); },
+      (error) => setScrollError(errorMessage(error)), () => activeRef.current);
+    scrolling.current = scroller;
     scheduleFit();
     void document.fonts.ready.then(() => { if (!disposed) scheduleFit(); });
     instance.attachCustomKeyEventHandler((event) => {
@@ -111,10 +112,10 @@ function TerminalView({ item, active }: { item: OpenTerminal; active: boolean })
       disposed = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
-      viewport?.removeEventListener('mousedown', preserveScrollbarDrag);
+      scroller.dispose(); scrolling.current = null;
       unsubscribe(); input.dispose(); instance.dispose(); terminal.current = null; fit.current = null;
     };
-  }, [item.id, copySelection, pasteClipboard]);
+  }, [item.id, item.backend, copySelection, pasteClipboard]);
 
   useEffect(() => {
     if (active) { fit.current?.(); terminal.current?.focus(); }
@@ -130,6 +131,11 @@ function TerminalView({ item, active }: { item: OpenTerminal; active: boolean })
     });
   }}>
     <div ref={surface} className="terminal-surface" />
+    <input className="terminal-scrollbar" type="range" min={0} max={Math.max(1, scrollState.lines)} step={1}
+      value={scrollState.position} disabled={scrollState.lines === 0} aria-label="终端滚动条" aria-orientation="vertical"
+      aria-valuetext={scrollState.position === scrollState.lines ? '最新输出' : `历史第 ${scrollState.position + 1} 行`}
+      onChange={(event) => scrolling.current?.setPosition(Number(event.target.value))} />
+    {scrollError && <div className="terminal-scroll-error" role="status">{scrollError}</div>}
     {contextMenu && <div ref={menu} className="terminal-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu">
       <button type="button" role="menuitem" disabled={!contextMenu.canCopy} onClick={copySelection}><Copy size={15} />复制</button>
       <button type="button" role="menuitem" onClick={pasteClipboard}><ClipboardPaste size={15} />粘贴</button>
@@ -214,7 +220,7 @@ export function App() {
     setBusy(true); setMessage(`正在进入 ${name}…`);
     try {
       const result = await desktop.openSession({ name, cwd });
-      const item = { id: result.terminalId, name: result.sessionName };
+      const item = { id: result.terminalId, name: result.sessionName, backend: result.backend };
       setTerminals((current) => [...current, item]); setActiveId(item.id); setMessage('');
       window.setTimeout(() => void refresh(), 500);
     } catch (error) { setMessage(errorMessage(error)); }

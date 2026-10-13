@@ -113,6 +113,7 @@ type fakeServer struct {
 	mu          sync.Mutex
 	commands    []string
 	connections []*ssh.ServerConn
+	runCommand func(string) (string, error)
 }
 
 func startSSH(t *testing.T, public ssh.PublicKey) *fakeServer {
@@ -185,10 +186,15 @@ func (f *fakeServer) handle(channel ssh.Channel, requests <-chan *ssh.Request) {
 			cmd := payload.Command
 			f.mu.Lock()
 			f.commands = append(f.commands, cmd)
+			runner := f.runCommand
 			f.mu.Unlock()
 			req.Reply(true, nil)
 			status := uint32(0)
 			switch {
+			case runner != nil && strings.Contains(cmd, "tmux ") && !strings.Contains(cmd, "attach-session"):
+				output, err := runner(cmd)
+				if err != nil { status = 1; io.WriteString(channel.Stderr(), err.Error()) }
+				io.WriteString(channel, output)
 			case strings.HasPrefix(cmd, "powershell.exe"):
 				status = 127
 			case cmd == supportProbe:

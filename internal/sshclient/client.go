@@ -26,6 +26,7 @@ const maxHistory = 2 * 1024 * 1024
 type terminal struct {
 	mu        sync.Mutex
 	writeMu   sync.Mutex
+	scrollPane string // Protected by writeMu; only modes entered by our scrollbar.
 	session   *ssh.Session
 	stdin     io.WriteCloser
 	name      string
@@ -345,6 +346,9 @@ func (c *Client) disconnect() {
 	c.terminals = map[string]*terminal{}
 	c.mu.Unlock()
 	for _, t := range ts {
+		t.writeMu.Lock()
+		_ = t.leaveHistory(conn)
+		t.writeMu.Unlock()
 		t.finish(nil)
 		t.close()
 	}
@@ -586,6 +590,11 @@ func (c *Client) WriteTerminal(id, data string) error {
 	}
 	t.writeMu.Lock()
 	defer t.writeMu.Unlock()
+	if t.scrollPane != "" {
+		conn, err := c.current()
+		if err != nil { return err }
+		if err := t.leaveHistory(conn); err != nil { return err }
+	}
 	_, err := io.WriteString(t.stdin, data)
 	return err
 }
@@ -600,6 +609,10 @@ func (c *Client) CloseTerminal(id string) {
 	delete(c.terminals, id)
 	c.mu.Unlock()
 	if t != nil {
+		conn, _ := c.current()
+		t.writeMu.Lock()
+		_ = t.leaveHistory(conn)
+		t.writeMu.Unlock()
 		t.close()
 	}
 }

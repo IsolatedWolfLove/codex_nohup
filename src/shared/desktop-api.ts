@@ -1,4 +1,4 @@
-import type { ConnectInput, ConnectionInfo, CreateSessionInput, CredentialRequest, PersistentSession, SSHHost, TerminalEvent, TerminalOpened } from './contracts';
+import type { ConnectInput, ConnectionInfo, CreateSessionInput, CredentialRequest, PersistentSession, SSHHost, TerminalEvent, TerminalOpened, TerminalScrollState } from './contracts';
 
 export interface DesktopApi {
   connect(input: ConnectInput): Promise<ConnectionInfo>;
@@ -10,6 +10,8 @@ export interface DesktopApi {
   resizeTerminal(id: string, cols: number, rows: number): Promise<void>;
   closeTerminal(id: string): Promise<void>;
   readyTerminal(id: string): Promise<void>;
+  getTerminalScrollState(id: string): Promise<TerminalScrollState>;
+  scrollTerminal(id: string, value: number, relative: boolean): Promise<TerminalScrollState>;
   choosePrivateKey(): Promise<string | null>;
   confirmKill(name: string): Promise<boolean>;
   clipboardGetText(): Promise<string>;

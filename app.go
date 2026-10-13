@@ -101,6 +101,8 @@ func (a *App) ResizeTerminal(id string, cols, rows int) error {
 	return a.ssh.ResizeTerminal(id, cols, rows)
 }
 func (a *App) CloseTerminal(id string) { a.ssh.CloseTerminal(id) }
+func (a *App) GetTerminalScrollState(id string) (sshclient.TerminalScrollState, error) { return a.ssh.GetTerminalScrollState(id) }
+func (a *App) ScrollTerminal(id string, value int, relative bool) (sshclient.TerminalScrollState, error) { return a.ssh.ScrollTerminal(id, value, relative) }
 func (a *App) ChoosePrivateKey() (string, error) {
 	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择 SSH 私钥"})
 }
