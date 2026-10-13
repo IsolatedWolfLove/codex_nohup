@@ -51,7 +51,7 @@ func (a *App) SaveSSHConfig(content string) error {
 	return os.Chmod(path, 0600)
 }
 
-type configBlock struct { patterns []string; values map[string]string }
+type configBlock struct { patterns []string; values map[string]string; identities []string }
 
 func parseSSHConfig(content string) ([]configBlock, []string) {
 	blocks := []configBlock{{patterns: []string{"*"}, values: map[string]string{}}}
@@ -72,6 +72,7 @@ func parseSSHConfig(content string) ([]configBlock, []string) {
 			}
 		} else {
 			block := &blocks[len(blocks)-1]
+			if key == "identityfile" { block.identities = append(block.identities, strings.Trim(value, "\"'")) }
 			if _, exists := block.values[key]; !exists { block.values[key] = strings.Trim(value, "\"'") }
 		}
 	}
@@ -103,6 +104,9 @@ func resolveSSHHost(content, alias string) sshclient.SSHHost {
 	blocks, _ := parseSSHConfig(content)
 	for _, block := range blocks {
 		if !hostMatches(alias, block.patterns) { continue }
+		for _, identity := range block.identities {
+			result.Identities = append(result.Identities, expandIdentity(identity))
+		}
 		for key, value := range block.values { if _, exists := values[key]; !exists { values[key] = value } }
 	}
 	if value := values["hostname"]; value != "" { result.Host = value }

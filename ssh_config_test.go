@@ -1,6 +1,17 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"reflect"
+)
+
+func TestResolveMultipleIdentities(t *testing.T) {
+	config := "Host work\n IdentityFile first\n IdentityFile second\nHost *\n IdentityFile fallback\n"
+	host := resolveSSHHost(config, "work")
+	if !reflect.DeepEqual(host.Identities, []string{"first", "second", "fallback"}) || host.Identity != "first" {
+		t.Fatalf("unexpected identities: %#v", host)
+	}
+}
 
 func TestResolveSSHHost(t *testing.T) {
 	config := `

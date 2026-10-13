@@ -186,27 +186,10 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 		}
 		auths = append(auths, ssh.PublicKeys(signers...))
 	case "auto":
-		if input.PrivateKeyPath != "" {
-			data, err := os.ReadFile(input.PrivateKeyPath)
-			if err != nil { return ConnectionInfo{}, err }
-			signer, err := ssh.ParsePrivateKey(data)
-			if _, ok := err.(*ssh.PassphraseMissingError); ok {
-				pass, askErr := c.credential("passphrase", "请输入私钥口令："+input.PrivateKeyPath, true)
-				if askErr != nil { return ConnectionInfo{}, askErr }
-				signer, err = ssh.ParsePrivateKeyWithPassphrase(data, []byte(pass))
-			}
-			if err != nil { return ConnectionInfo{}, err }
-			auths = append(auths, ssh.PublicKeys(signer))
-		}
-		if socket, err := dialAgent(); err == nil {
-			defer socket.Close()
-			if signers, signErr := agent.NewClient(socket).Signers(); signErr == nil && len(signers) > 0 {
-				auths = append(auths, ssh.PublicKeys(signers...))
-			}
-		}
-		auths = append(auths, ssh.PasswordCallback(func() (string, error) {
-			return c.credential("password", fmt.Sprintf("请输入 %s@%s 的密码", input.Username, input.Host), true)
-		}))
+		methods, cleanups, err := c.autoAuthMethods(input)
+		for _, cleanup := range cleanups { defer cleanup() }
+		if err != nil { return ConnectionInfo{}, err }
+		auths = append(auths, methods...)
 	default:
 		return ConnectionInfo{}, errors.New("不支持的认证方式")
 	}
@@ -218,7 +201,7 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 	var proxyClient *ssh.Client
 	var err error
 	if input.ProxyJumpHost != "" {
-		jumpInput := ConnectInput{Host: input.ProxyJumpHost, Port: input.ProxyJumpPort, Username: input.ProxyJumpUser, AuthMethod: "auto", PrivateKeyPath: input.ProxyJumpKey}
+		jumpInput := ConnectInput{Host: input.ProxyJumpHost, Port: input.ProxyJumpPort, Username: input.ProxyJumpUser, AuthMethod: "auto", PrivateKeyPath: input.ProxyJumpKey, PrivateKeyPaths: input.ProxyJumpKeys}
 		if jumpInput.Port == 0 { jumpInput.Port = 22 }
 		jumpAuths, cleanups, authErr := c.autoAuthMethods(jumpInput)
 		if authErr != nil { return ConnectionInfo{}, fmt.Errorf("跳板机认证配置失败：%w", authErr) }
@@ -277,33 +260,6 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 	go c.monitor(conn)
 	go c.keepalive(conn)
 	return info, nil
-}
-
-func (c *Client) autoAuthMethods(input ConnectInput) ([]ssh.AuthMethod, []func(), error) {
-	auths := []ssh.AuthMethod{}
-	cleanups := []func(){}
-	if input.PrivateKeyPath != "" {
-		data, err := os.ReadFile(input.PrivateKeyPath)
-		if err != nil { return nil, cleanups, err }
-		signer, err := ssh.ParsePrivateKey(data)
-		if _, ok := err.(*ssh.PassphraseMissingError); ok {
-			pass, askErr := c.credential("passphrase", "请输入私钥口令："+input.PrivateKeyPath, true)
-			if askErr != nil { return nil, cleanups, askErr }
-			signer, err = ssh.ParsePrivateKeyWithPassphrase(data, []byte(pass))
-		}
-		if err != nil { return nil, cleanups, err }
-		auths = append(auths, ssh.PublicKeys(signer))
-	}
-	if socket, err := dialAgent(); err == nil {
-		if signers, signErr := agent.NewClient(socket).Signers(); signErr == nil && len(signers) > 0 {
-			auths = append(auths, ssh.PublicKeys(signers...))
-			cleanups = append(cleanups, func() { _ = socket.Close() })
-		} else { _ = socket.Close() }
-	}
-	auths = append(auths, ssh.PasswordCallback(func() (string, error) {
-		return c.credential("password", fmt.Sprintf("请输入 %s@%s 的密码", input.Username, input.Host), true)
-	}))
-	return auths, cleanups, nil
 }
 
 func (c *Client) sshClientConfig(input ConnectInput, auths []ssh.AuthMethod) *ssh.ClientConfig {

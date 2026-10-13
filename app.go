@@ -76,6 +76,7 @@ func (a *App) Connect(input sshclient.ConnectInput) (sshclient.ConnectionInfo, e
 		host := resolveSSHHost(content, input.Alias)
 		input.Host, input.Port, input.Username = host.Host, host.Port, host.User
 		input.PrivateKeyPath, input.AuthMethod = host.Identity, "auto"
+		input.PrivateKeyPaths = host.Identities
 		if jumpName := strings.TrimSpace(strings.Split(host.ProxyJump, ",")[0]); jumpName != "" && strings.ToLower(jumpName) != "none" {
 			jumpAlias, jumpUser, jumpPort := parseProxyJump(jumpName)
 			jump := resolveSSHHost(content, jumpAlias)
@@ -83,6 +84,7 @@ func (a *App) Connect(input sshclient.ConnectInput) (sshclient.ConnectionInfo, e
 			if jumpPort != 0 { jump.Port = jumpPort }
 			input.ProxyJumpHost, input.ProxyJumpPort = jump.Host, jump.Port
 			input.ProxyJumpUser, input.ProxyJumpKey = jump.User, jump.Identity
+			input.ProxyJumpKeys = jump.Identities
 		}
 	}
 	return a.ssh.Connect(input)
