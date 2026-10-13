@@ -13,8 +13,9 @@ function errorMessage(error: unknown): string {
 
 function TerminalView({ item, active }: { item: OpenTerminal; active: boolean }) {
   const host = useRef<HTMLDivElement>(null);
+  const surface = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
-  const fit = useRef<FitAddon | null>(null);
+  const fit = useRef<(() => void) | null>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; canCopy: boolean } | null>(null);
 
@@ -52,11 +53,32 @@ function TerminalView({ item, active }: { item: OpenTerminal; active: boolean })
   }, [contextMenu]);
 
   useEffect(() => {
-    if (!host.current) return;
+    if (!surface.current) return;
     const instance = new Terminal({ cursorBlink: true, convertEol: false, fontFamily: 'JetBrains Mono, Cascadia Code, monospace', fontSize: 14, theme: { background: '#080b10', foreground: '#d7e0ea', cursor: '#64d8cb', selectionBackground: '#264b52' } });
     const addon = new FitAddon();
-    instance.loadAddon(addon); instance.open(host.current); addon.fit(); instance.focus();
-    terminal.current = instance; fit.current = addon;
+    instance.loadAddon(addon); instance.open(surface.current); instance.focus();
+    let frame = 0;
+    let disposed = false;
+    const scheduleFit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (!surface.current?.clientWidth || !surface.current.clientHeight) return;
+        addon.fit();
+        if (instance.cols > 0 && instance.rows > 0) void desktop.resizeTerminal(item.id, instance.cols, instance.rows).catch(() => undefined);
+      });
+    };
+    terminal.current = instance; fit.current = scheduleFit;
+    // xterm's root mousedown handler cancels native scrollbar dragging.
+    // Keep scrollbar presses out of its selection and mouse-reporting handlers.
+    const viewport = instance.element?.querySelector<HTMLElement>('.xterm-viewport');
+    const preserveScrollbarDrag = (event: MouseEvent) => {
+      if (!viewport) return;
+      const bounds = viewport.getBoundingClientRect();
+      if (event.clientX >= bounds.left + viewport.clientWidth) event.stopPropagation();
+    };
+    viewport?.addEventListener('mousedown', preserveScrollbarDrag);
+    scheduleFit();
+    void document.fonts.ready.then(() => { if (!disposed) scheduleFit(); });
     instance.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true;
       const copy = (event.ctrlKey && event.shiftKey && event.code === 'KeyC') || (event.ctrlKey && event.code === 'Insert');
@@ -83,16 +105,19 @@ function TerminalView({ item, active }: { item: OpenTerminal; active: boolean })
       if (event.type === 'exit') instance.writeln('\r\n\x1b[90m[连接已断开，会话仍在远端运行]\x1b[0m');
     });
     void desktop.readyTerminal(item.id).catch((error) => instance.writeln(errorMessage(error)));
-    const observer = new ResizeObserver(() => {
-      addon.fit();
-      if (instance.cols > 0 && instance.rows > 0) void desktop.resizeTerminal(item.id, instance.cols, instance.rows).catch(() => undefined);
-    });
-    observer.observe(host.current);
-    return () => { observer.disconnect(); unsubscribe(); input.dispose(); instance.dispose(); terminal.current = null; };
+    const observer = new ResizeObserver(scheduleFit);
+    observer.observe(surface.current);
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      viewport?.removeEventListener('mousedown', preserveScrollbarDrag);
+      unsubscribe(); input.dispose(); instance.dispose(); terminal.current = null; fit.current = null;
+    };
   }, [item.id, copySelection, pasteClipboard]);
 
   useEffect(() => {
-    if (active) { fit.current?.fit(); terminal.current?.focus(); }
+    if (active) { fit.current?.(); terminal.current?.focus(); }
     else setContextMenu(null);
   }, [active]);
   return <div ref={host} className={`terminal-host ${active ? 'active' : ''}`} onContextMenu={(event) => {
@@ -104,6 +129,7 @@ function TerminalView({ item, active }: { item: OpenTerminal; active: boolean })
       canCopy: terminal.current?.hasSelection() ?? false,
     });
   }}>
+    <div ref={surface} className="terminal-surface" />
     {contextMenu && <div ref={menu} className="terminal-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu">
       <button type="button" role="menuitem" disabled={!contextMenu.canCopy} onClick={copySelection}><Copy size={15} />复制</button>
       <button type="button" role="menuitem" onClick={pasteClipboard}><ClipboardPaste size={15} />粘贴</button>
