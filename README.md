@@ -8,6 +8,45 @@
 - 首页读取并展示 `~/.ssh/config` 主机，可直接编辑配置并点击连接。支持密码、私钥（含口令）、SSH Agent 和 keyboard-interactive 认证；需要密码或私钥口令时会弹窗询问。
 - 支持 SSH config 的单级 `ProxyJump`，跳板机和目标服务器分别使用各自的用户、端口与私钥配置。
 - Tailscale SSH check mode 返回登录地址时，会自动使用系统浏览器打开，完成 approve 后继续连接。首次连接仍需确认主机密钥指纹，已保存的主机密钥发生变化时会拒绝连接。
+- 鼠标滚轮用于查看历史输出，不再转换成上下方向键。右侧竖栏可拖动；`tmux` 会话直接读取远端历史位置，普通终端使用本地历史。
+
+## SSH 配置与自动认证
+
+点击 SSH config 中的主机时，应用自动尝试 SSH Agent 和文件密钥，失败后再询问密码。未配置 `IdentityFile` 时，会查找当前用户 `~/.ssh/` 下的 `id_rsa`、`id_ecdsa`、`id_ed25519` 和 `id_dsa`；默认名称的密钥无需在配置中显式指定。
+
+自定义密钥文件使用 `IdentityFile`，可以指定多条。匹配的 `Host` 块中的密钥会依次尝试；缺失或无法解析的密钥不会阻止其他密钥、Agent 或密码认证。目标机和跳板机使用相同的自动认证逻辑。
+
+```sshconfig
+Host work
+  HostName server.example.com
+  User ubuntu
+  # 使用默认密钥时无需填写 IdentityFile
+
+Host private
+  HostName 192.168.1.20
+  User ubuntu
+  IdentityFile ~/.ssh/work_key
+  IdentityFile ~/.ssh/backup_key
+  ProxyJump work
+```
+
+加密密钥需要口令时会弹窗询问。对于能读取公钥的加密密钥，会先让服务器检查公钥，确认可用后才询问口令；已载入 Agent 的密钥无需重复解锁。Linux 下桌面应用需要继承 `SSH_AUTH_SOCK` 才能访问 Agent；从终端启动应用和从桌面启动应用的环境变量可能不同。
+
+应用自行解析 SSH config，并非直接调用系统 OpenSSH，当前支持常用主机字段、多条 `IdentityFile` 和单级 `ProxyJump`，尚未完整支持 OpenSSH 的所有配置指令，例如 `Include`、`Match` 和 `IdentityAgent`。
+
+## 终端操作与历史滚动
+
+- 滚轮向上查看历史，向下回到较新的输出；右侧竖栏可拖动到指定位置。
+- `tmux` 会话的历史保存在远端。滚动时进入历史模式，回到底部或开始输入时恢复实时终端；关闭标签或断开连接时清理应用进入的历史模式。
+- 普通终端滚动本地已接收的历史输出。`screen` 的远端历史暂未接入右侧竖栏；本地没有历史时，滚轮不会发送上下方向键。
+- 选中文本后按 `Ctrl+Shift+C` 或 `Ctrl+Insert` 复制；按 `Ctrl+Shift+V` 或 `Shift+Insert` 粘贴，也可使用右键菜单。
+
+## v2.4.5 更新
+
+- 修正终端可用高度计算，避免最下面一行被遮挡，并在窗口缩放、字体就绪和标签切换后同步尺寸。
+- 补齐 SSH 默认密钥、多条 `IdentityFile`、Agent 回退和加密密钥解锁，目标机及跳板机均适用。
+- 将滚轮和右侧竖栏接入 `tmux` 远端历史，避免滚轮产生上下键效果，并处理输入、Esc 和关闭标签后的历史模式退出。
+- 更新使用说明；本版本包含 v2.4.2–v2.4.4 的修复。
 
 ## 开发环境
 
@@ -66,8 +105,10 @@ Linux 远端安装 `tmux`（推荐）或 `screen`。Windows 远端需要 Windows
 推送 main 或提交 PR 时运行前端测试、类型检查和 Go 后端竞态测试。推送 `v1.2.3` 或 `v1.2.3-beta.1` tag 后，在 Linux 和 Windows runner 上分别构建安装包，保留 Actions artifacts 30 天，并上传到对应 GitHub Release。
 
 ```bash
-git tag -a v0.1.0 -m "Nohop Codex v0.1.0"
-git push origin v0.1.0
+git tag -a v2.4.5 -m "Nohop Codex v2.4.5"
+git push origin v2.4.5
 ```
+
+发布构建会从 tag 自动设置 `package.json`、锁文件和 Wails 产品版本。构建完成后，可在 [GitHub Releases](https://github.com/IsolatedWolfLove/codex_nohup/releases) 下载对应版本的安装包。
 
 Wails 系统要求和构建说明：https://wails.io/docs/gettingstarted/installation/
