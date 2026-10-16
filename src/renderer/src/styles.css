@@ -71,3 +71,7 @@ aside header div { display: grid; gap: 3px; min-width: 0; } aside header strong 
 .credential-modal h3 { margin:14px 0 7px; }
 .credential-modal p { color:#9dadba; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.5; }
 .credential-modal div { display:flex; justify-content:flex-end; gap:9px; margin-top:18px; }
+
+.add-host-button { margin-bottom: 14px; }
+.add-host-modal { width: min(560px, 90vw); max-height: 90vh; overflow-y: auto; }
+.add-host-modal small { display: block; color: #8296a5; line-height: 1.6; margin-bottom: 16px; }

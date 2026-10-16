@@ -155,6 +155,10 @@ export function App() {
   const [privateKeyPath, setPrivateKeyPath] = useState(''); const [passphrase, setPassphrase] = useState('');
   const [newName, setNewName] = useState('nohop-work'); const [cwd, setCwd] = useState('');
   const [hosts, setHosts] = useState<SSHHost[]>([]);
+  const [showAddHost, setShowAddHost] = useState(false);
+  const [sshCommand, setSSHCommand] = useState('');
+  const [sshAlias, setSSHAlias] = useState('');
+  const [addError, setAddError] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [configText, setConfigText] = useState<string | null>(null);
   const [credential, setCredential] = useState<CredentialRequest | null>(null);
@@ -194,6 +198,20 @@ export function App() {
       const info = await desktop.connect({ alias, host: alias, port: 22, username: '', authMethod: 'auto' });
       setConnected(info); setMessage(info.backend === 'none' ? '已连接，但 Linux 服务器未安装 tmux/screen。' : '已连接');
     } catch (error) { setMessage(errorMessage(error)); }
+    finally { setBusy(false); }
+  }
+
+  async function addHost(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true); setAddError('');
+    try {
+      const alias = sshAlias.trim();
+      await desktop.addSSHHost(alias, sshCommand);
+      setShowAddHost(false); setSSHCommand(''); setSSHAlias('');
+      await loadHosts();
+      await connectHost(alias);
+    } catch (error) { setAddError(errorMessage(error)); }
     finally { setBusy(false); }
   }
 
@@ -254,7 +272,17 @@ export function App() {
 
   if (!connected) return <main className="login-shell">
     <section className="brand-panel"><div className="brand-mark"><img src="./appicon.png" alt="" /></div><h1>Nohop Codex</h1><p>关掉电脑，任务继续跑。回来后点击原来的会话，立即接着工作。</p><div className="feature"><SquareTerminal size={18} /><span>Linux：tmux / screen</span></div><div className="feature"><Server size={18} /><span>Windows：原生 ConPTY</span></div></section>
-    <section className="connect-card"><div className="connect-title"><div><h2>Remote SSH</h2><small>选择 ~/.ssh/config 中的主机</small></div><button className="icon" title="编辑 SSH config" onClick={() => void editConfig()}><FilePenLine size={18} /></button></div><div className="host-list">{hosts.map((item) => <button className="host-card" key={item.alias} disabled={busy} onClick={() => void connectHost(item.alias)}><Server size={18} /><span><strong>{item.alias}</strong><small>{item.user ? `${item.user}@` : ''}{item.host}:{item.port}</small></span><ChevronRight size={17} /></button>)}{hosts.length === 0 && <div className="hosts-empty">SSH config 中还没有主机<br/><button onClick={() => void editConfig()}>创建配置</button></div>}</div><button className="manual-toggle" onClick={() => setShowManual((value) => !value)}>{showManual ? '收起手动连接' : '手动连接…'}</button>{showManual && <form className="manual-form" onSubmit={connect}><label>主机<input value={host} onChange={(e) => setHost(e.target.value)} placeholder="server.example.com" required /></label><div className="row"><label>用户名<input value={username} onChange={(e) => setUsername(e.target.value)} required /></label><label className="port">端口<input type="number" value={port} onChange={(e) => setPort(Number(e.target.value))} /></label></div><label>认证方式<select value={authMethod} onChange={(e) => setAuthMethod(e.target.value as AuthMethod)}><option value="password">密码</option><option value="privateKey">私钥</option><option value="agent">SSH Agent</option></select></label>{authMethod === 'password' && <label>密码（留空则连接时弹窗）<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>}{authMethod === 'privateKey' && <><label>私钥<div className="file-field"><input value={privateKeyPath} onChange={(e) => setPrivateKeyPath(e.target.value)} /><button type="button" onClick={async () => { const value = await desktop.choosePrivateKey(); if (value) setPrivateKeyPath(value); }}><KeyRound size={16} /></button></div></label><label>私钥口令（可选）<input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} /></label></>}<button className="primary" disabled={busy}>{busy ? '连接中…' : '连接'}</button></form>}{message && <p className="message">{message}</p>}</section>
+    <section className="connect-card"><div className="connect-title"><div><h2>Remote SSH</h2><small>选择 ~/.ssh/config 中的主机</small></div><button className="icon" title="编辑 SSH config" onClick={() => void editConfig()}><FilePenLine size={18} /></button></div><button className="primary add-host-button" disabled={busy} onClick={() => { setAddError(''); setShowAddHost(true); }}><Plus size={17} />添加 SSH 主机</button><div className="host-list">{hosts.map((item) => <button className="host-card" key={item.alias} disabled={busy} onClick={() => void connectHost(item.alias)}><Server size={18} /><span><strong>{item.alias}</strong><small>{item.user ? `${item.user}@` : ''}{item.host}:{item.port}</small></span><ChevronRight size={17} /></button>)}{hosts.length === 0 && <div className="hosts-empty">SSH config 中还没有主机<br/><button disabled={busy} onClick={() => { setAddError(''); setShowAddHost(true); }}>输入 SSH 命令添加</button></div>}</div><button className="manual-toggle" onClick={() => setShowManual((value) => !value)}>{showManual ? '收起手动连接' : '手动连接…'}</button>{showManual && <form className="manual-form" onSubmit={connect}><label>主机<input value={host} onChange={(e) => setHost(e.target.value)} placeholder="server.example.com" required /></label><div className="row"><label>用户名<input value={username} onChange={(e) => setUsername(e.target.value)} required /></label><label className="port">端口<input type="number" value={port} onChange={(e) => setPort(Number(e.target.value))} /></label></div><label>认证方式<select value={authMethod} onChange={(e) => setAuthMethod(e.target.value as AuthMethod)}><option value="password">密码</option><option value="privateKey">私钥</option><option value="agent">SSH Agent</option></select></label>{authMethod === 'password' && <label>密码（留空则连接时弹窗）<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>}{authMethod === 'privateKey' && <><label>私钥<div className="file-field"><input value={privateKeyPath} onChange={(e) => setPrivateKeyPath(e.target.value)} /><button type="button" onClick={async () => { const value = await desktop.choosePrivateKey(); if (value) setPrivateKeyPath(value); }}><KeyRound size={16} /></button></div></label><label>私钥口令（可选）<input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} /></label></>}<button className="primary" disabled={busy}>{busy ? '连接中…' : '连接'}</button></form>}{message && <p className="message">{message}</p>}</section>
+    {showAddHost && <div className="modal-backdrop"><form className="credential-modal add-host-modal" onSubmit={addHost}>
+      <h3>添加 SSH 主机</h3>
+      <p>输入平时使用的 SSH 命令，保存后立即连接。支持密码、私钥和 SSH Agent；需要密码或口令时会弹窗。</p>
+      <label>SSH 命令<input autoFocus required disabled={busy} value={sshCommand} onChange={(event) => setSSHCommand(event.target.value)} placeholder="ssh ubuntu@example.com -p 22" /></label>
+      <small>指定密钥：ssh -i ~/.ssh/id_ed25519 ubuntu@example.com<br />支持 -p、-l、-i、-J；含空格的路径请加引号。</small>
+      <label>主机别名<input required disabled={busy} value={sshAlias} onChange={(event) => setSSHAlias(event.target.value)} placeholder="例如：工作服务器" /></label>
+      <small>保存到 ~/.ssh/config，以后可从主机列表直接连接。</small>
+      {addError && <p className="message" role="alert">{addError}</p>}
+      <div><button type="button" disabled={busy} onClick={() => setShowAddHost(false)}>取消</button><button className="primary" disabled={busy}>{busy ? '正在保存…' : '保存并连接'}</button></div>
+    </form></div>}
     {configText !== null && <div className="modal-backdrop"><section className="config-modal"><header><div><h2>SSH config</h2><small>~/.ssh/config</small></div><button className="icon" onClick={() => setConfigText(null)}><X size={18}/></button></header><textarea value={configText} onChange={(event) => setConfigText(event.target.value)} spellCheck={false} placeholder={'Host my-server\n  HostName 192.168.1.10\n  User ubuntu\n  IdentityFile ~/.ssh/id_ed25519'} /><footer><button onClick={() => setConfigText(null)}>取消</button><button className="primary" onClick={() => void saveConfig()}>保存配置</button></footer></section></div>}
     {credential && <div className="modal-backdrop credential-layer"><form className="credential-modal" onSubmit={(event) => { event.preventDefault(); answerCredential(false); }}><KeyRound size={24}/><h3>{credential.kind === 'hostkey' ? '首次连接服务器' : credential.kind === 'passphrase' ? 'SSH 私钥口令' : 'SSH 认证'}</h3><p>{credential.prompt}</p>{credential.kind !== 'hostkey' && <input autoFocus type={credential.secret ? 'password' : 'text'} value={credentialValue} onChange={(event) => setCredentialValue(event.target.value)} />}<div><button type="button" onClick={() => answerCredential(true)}>取消</button><button className="primary">{credential.kind === 'hostkey' ? '信任并连接' : '确认'}</button></div></form></div>}
   </main>;

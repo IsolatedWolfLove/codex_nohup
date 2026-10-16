@@ -11,6 +11,7 @@ type Backend = {
   GetTerminalScrollState: DesktopApi['getTerminalScrollState']; ScrollTerminal: DesktopApi['scrollTerminal'];
   ConfirmKill: DesktopApi['confirmKill'];
   ClipboardGetText: DesktopApi['clipboardGetText']; ClipboardSetText: DesktopApi['clipboardSetText'];
+  AddSSHHost: DesktopApi['addSSHHost'];
   GetSSHConfig: DesktopApi['getSSHConfig']; SaveSSHConfig: DesktopApi['saveSSHConfig'];
   ListSSHHosts: DesktopApi['listSSHHosts']; SubmitCredential: DesktopApi['submitCredential'];
 };
@@ -36,6 +37,7 @@ export const desktop: DesktopApi = {
   confirmKill: (name) => window.go.main.App.ConfirmKill(name),
   clipboardGetText: () => window.go.main.App.ClipboardGetText(),
   clipboardSetText: (value) => window.go.main.App.ClipboardSetText(value),
+  addSSHHost: (alias, command) => window.go.main.App.AddSSHHost(alias, command),
   getSSHConfig: () => window.go.main.App.GetSSHConfig(),
   saveSSHConfig: (content) => window.go.main.App.SaveSSHConfig(content),
   listSSHHosts: () => window.go.main.App.ListSSHHosts(),

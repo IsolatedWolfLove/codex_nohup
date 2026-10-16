@@ -16,6 +16,7 @@ export interface DesktopApi {
   confirmKill(name: string): Promise<boolean>;
   clipboardGetText(): Promise<string>;
   clipboardSetText(value: string): Promise<void>;
+  addSSHHost(alias: string, command: string): Promise<void>;
   getSSHConfig(): Promise<string>;
   saveSSHConfig(content: string): Promise<void>;
   listSSHHosts(): Promise<SSHHost[]>;

@@ -63,7 +63,7 @@ func parseSSHConfig(content string) ([]configBlock, []string) {
 		if i := strings.Index(line, " #"); i >= 0 { line = line[:i] }
 		fields := strings.Fields(line)
 		if len(fields) < 2 { continue }
-		key, value := strings.ToLower(fields[0]), strings.Join(fields[1:], " ")
+		key, value := strings.ToLower(fields[0]), strings.TrimSpace(line[len(fields[0]):])
 		if key == "host" {
 			patterns := fields[1:]
 			blocks = append(blocks, configBlock{patterns: patterns, values: map[string]string{}})
