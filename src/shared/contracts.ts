@@ -1,6 +1,7 @@
 export type AuthMethod = 'auto' | 'password' | 'privateKey' | 'agent';
 
 export interface ConnectInput {
+  connectionId: string;
   alias?: string;
   host: string;
   port: number;
@@ -21,6 +22,7 @@ export type RemotePlatform = 'linux' | 'windows';
 export type SessionBackend = 'tmux' | 'screen' | 'conpty' | 'none';
 
 export interface ConnectionInfo {
+  connectionId: string;
   platform: RemotePlatform;
   backend: SessionBackend;
   host: string;
@@ -35,6 +37,7 @@ export interface PersistentSession {
 }
 
 export interface CreateSessionInput {
+  connectionId: string;
   name: string;
   cwd?: string;
   cols?: number;
@@ -50,6 +53,7 @@ export interface TerminalOpened {
 export interface TerminalScrollState { lines: number; position: number; rows: number }
 
 export type TerminalEvent =
+  | { type: 'disconnected'; connectionId: string; terminalId: string }
   | { type: 'data'; terminalId: string; data: string }
   | { type: 'exit'; terminalId: string }
   | { type: 'error'; terminalId: string; message: string };

@@ -113,7 +113,7 @@ type fakeServer struct {
 	mu          sync.Mutex
 	commands    []string
 	connections []*ssh.ServerConn
-	runCommand func(string) (string, error)
+	runCommand  func(string) (string, error)
 }
 
 func startSSH(t *testing.T, public ssh.PublicKey) *fakeServer {
@@ -193,7 +193,10 @@ func (f *fakeServer) handle(channel ssh.Channel, requests <-chan *ssh.Request) {
 			switch {
 			case runner != nil && strings.Contains(cmd, "tmux ") && !strings.Contains(cmd, "attach-session"):
 				output, err := runner(cmd)
-				if err != nil { status = 1; io.WriteString(channel.Stderr(), err.Error()) }
+				if err != nil {
+					status = 1
+					io.WriteString(channel.Stderr(), err.Error())
+				}
 				io.WriteString(channel, output)
 			case strings.HasPrefix(cmd, "powershell.exe"):
 				status = 127
@@ -309,6 +312,23 @@ func TestSSHPrivateKeyAndAuthFailure(t *testing.T) {
 	input.Passphrase = "phrase"
 	if _, err = c.Connect(input); err != nil {
 		t.Fatal(err)
+	}
+	// Recovery has the key path but deliberately no stored passphrase.
+	prompted := 0
+	recovered := New(func(TerminalEvent) {}, nil, ssh.InsecureIgnoreHostKey(), func(kind, prompt string, secret bool) (string, error) {
+		if kind != "passphrase" || !secret {
+			t.Errorf("unexpected credential request: %s", kind)
+		}
+		prompted++
+		return "phrase", nil
+	}, nil)
+	defer recovered.Disconnect()
+	input.Passphrase = ""
+	if _, err = recovered.Connect(input); err != nil {
+		t.Fatal(err)
+	}
+	if prompted != 1 {
+		t.Fatalf("passphrase prompts: %d", prompted)
 	}
 }
 

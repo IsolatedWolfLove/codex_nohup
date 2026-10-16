@@ -12,25 +12,44 @@ import (
 
 	"nohop-codex/internal/sshclient"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/crypto/ssh"
-	"github.com/google/uuid"
 )
 
 type App struct {
-	ctx context.Context
-	ssh *sshclient.Client
+	ctx          context.Context
+	clientsMu    sync.Mutex
+	clients      map[string]*sshclient.Client
 	credentialMu sync.Mutex
-	credentials map[string]chan credentialResponse
+	credentials  map[string]chan credentialResponse
 }
-type credentialResponse struct { value string; cancelled bool }
-type credentialRequest struct { ID string `json:"id"`; Kind string `json:"kind"`; Prompt string `json:"prompt"`; Secret bool `json:"secret"` }
+type credentialResponse struct {
+	value     string
+	cancelled bool
+}
+type credentialRequest struct {
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Prompt string `json:"prompt"`
+	Secret bool   `json:"secret"`
+}
 
 func newApp() *App { return &App{} }
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.credentials = map[string]chan credentialResponse{}
-	a.ssh = sshclient.New(func(event sshclient.TerminalEvent) { runtime.EventsEmit(ctx, "terminal:event", event) }, windowsAgent,
+	a.clients = map[string]*sshclient.Client{}
+}
+func (a *App) newClient(id string) *sshclient.Client {
+	ctx := a.ctx
+	return sshclient.New(func(event sshclient.TerminalEvent) {
+		event.ConnectionID = id
+		if event.TerminalID != "" {
+			event.TerminalID = id + ":" + event.TerminalID
+		}
+		runtime.EventsEmit(ctx, "terminal:event", event)
+	}, windowsAgent,
 		func(host string, remoteAddr net.Addr, key ssh.PublicKey) error {
 			base, err := os.UserConfigDir()
 			if err != nil {
@@ -45,8 +64,10 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) requestCredential(kind, prompt string, secret bool) (string, error) {
 	id := uuid.NewString()
 	ch := make(chan credentialResponse, 1)
-	a.credentialMu.Lock(); a.credentials[id] = ch; a.credentialMu.Unlock()
-	runtime.EventsEmit(a.ctx, "credential:request", credentialRequest{ID:id, Kind:kind, Prompt:prompt, Secret:secret})
+	a.credentialMu.Lock()
+	a.credentials[id] = ch
+	a.credentialMu.Unlock()
+	runtime.EventsEmit(a.ctx, "credential:request", credentialRequest{ID: id, Kind: kind, Prompt: prompt, Secret: secret})
 	var response credentialResponse
 	select {
 	case response = <-ch:
@@ -56,23 +77,40 @@ func (a *App) requestCredential(kind, prompt string, secret bool) (string, error
 		a.credentialMu.Unlock()
 		return "", a.ctx.Err()
 	}
-	a.credentialMu.Lock(); delete(a.credentials, id); a.credentialMu.Unlock()
-	if response.cancelled { return "", errors.New("已取消认证") }
+	a.credentialMu.Lock()
+	delete(a.credentials, id)
+	a.credentialMu.Unlock()
+	if response.cancelled {
+		return "", errors.New("已取消认证")
+	}
 	return response.value, nil
 }
 func (a *App) SubmitCredential(id, value string, cancelled bool) {
-	a.credentialMu.Lock(); ch := a.credentials[id]; a.credentialMu.Unlock()
-	if ch != nil { select { case ch <- credentialResponse{value, cancelled}: default: } }
+	a.credentialMu.Lock()
+	ch := a.credentials[id]
+	a.credentialMu.Unlock()
+	if ch != nil {
+		select {
+		case ch <- credentialResponse{value, cancelled}:
+		default:
+		}
+	}
 }
 func (a *App) shutdown(context.Context) {
-	if a.ssh != nil {
-		a.ssh.Disconnect()
+	a.clientsMu.Lock()
+	clients := a.clients
+	a.clients = map[string]*sshclient.Client{}
+	a.clientsMu.Unlock()
+	for _, c := range clients {
+		c.Disconnect()
 	}
 }
 func (a *App) Connect(input sshclient.ConnectInput) (sshclient.ConnectionInfo, error) {
 	if input.Alias != "" {
 		content, err := a.GetSSHConfig()
-		if err != nil { return sshclient.ConnectionInfo{}, err }
+		if err != nil {
+			return sshclient.ConnectionInfo{}, err
+		}
 		host := resolveSSHHost(content, input.Alias)
 		input.Host, input.Port, input.Username = host.Host, host.Port, host.User
 		input.PrivateKeyPath, input.AuthMethod = host.Identity, "auto"
@@ -80,29 +118,124 @@ func (a *App) Connect(input sshclient.ConnectInput) (sshclient.ConnectionInfo, e
 		if jumpName := strings.TrimSpace(strings.Split(host.ProxyJump, ",")[0]); jumpName != "" && strings.ToLower(jumpName) != "none" {
 			jumpAlias, jumpUser, jumpPort := parseProxyJump(jumpName)
 			jump := resolveSSHHost(content, jumpAlias)
-			if jumpUser != "" { jump.User = jumpUser }
-			if jumpPort != 0 { jump.Port = jumpPort }
+			if jumpUser != "" {
+				jump.User = jumpUser
+			}
+			if jumpPort != 0 {
+				jump.Port = jumpPort
+			}
 			input.ProxyJumpHost, input.ProxyJumpPort = jump.Host, jump.Port
 			input.ProxyJumpUser, input.ProxyJumpKey = jump.User, jump.Identity
 			input.ProxyJumpKeys = jump.Identities
 		}
 	}
-	return a.ssh.Connect(input)
+	id := input.ConnectionID
+	if id == "" || strings.Contains(id, ":") {
+		return sshclient.ConnectionInfo{}, errors.New("无效连接 ID")
+	}
+	a.clientsMu.Lock()
+	c := a.clients[id]
+	if c == nil {
+		c = a.newClient(id)
+		a.clients[id] = c
+	}
+	a.clientsMu.Unlock()
+	info, err := c.Connect(input)
+	info.ConnectionID = id
+	return info, err
 }
-func (a *App) Disconnect()                                          { a.ssh.Disconnect() }
-func (a *App) ListSessions() ([]sshclient.PersistentSession, error) { return a.ssh.ListSessions() }
+func (a *App) client(id string) (*sshclient.Client, error) {
+	a.clientsMu.Lock()
+	defer a.clientsMu.Unlock()
+	c := a.clients[id]
+	if c == nil {
+		return nil, errors.New("连接不存在")
+	}
+	return c, nil
+}
+func (a *App) terminalClient(id string) (*sshclient.Client, string, error) {
+	connectionID, terminalID, ok := strings.Cut(id, ":")
+	if !ok {
+		return nil, "", errors.New("无效终端 ID")
+	}
+	c, err := a.client(connectionID)
+	return c, terminalID, err
+}
+func (a *App) Disconnect(id string) {
+	if c, err := a.client(id); err == nil {
+		c.Disconnect()
+	}
+}
+func (a *App) ListSessions(id string) ([]sshclient.PersistentSession, error) {
+	c, err := a.client(id)
+	if err != nil {
+		return nil, err
+	}
+	return c.ListSessions()
+}
 func (a *App) OpenSession(input sshclient.CreateSessionInput) (sshclient.TerminalOpened, error) {
-	return a.ssh.OpenSession(input)
+	c, err := a.client(input.ConnectionID)
+	if err != nil {
+		return sshclient.TerminalOpened{}, err
+	}
+	opened, err := c.OpenSession(input)
+	if err == nil {
+		opened.TerminalID = input.ConnectionID + ":" + opened.TerminalID
+	}
+	return opened, err
 }
-func (a *App) KillSession(name string) error       { return a.ssh.KillSession(name) }
-func (a *App) WriteTerminal(id, data string) error { return a.ssh.WriteTerminal(id, data) }
-func (a *App) ReadyTerminal(id string)             { a.ssh.ReadyTerminal(id) }
+func (a *App) KillSession(connectionID, name string) error {
+	c, err := a.client(connectionID)
+	if err != nil {
+		return err
+	}
+	return c.KillSession(name)
+}
+func (a *App) WriteTerminal(id, data string) error {
+	c, tid, err := a.terminalClient(id)
+	if err != nil {
+		return err
+	}
+	return c.WriteTerminal(tid, data)
+}
+func (a *App) ReadyTerminal(id string) {
+	if c, tid, err := a.terminalClient(id); err == nil {
+		c.ReadyTerminal(tid)
+	}
+}
 func (a *App) ResizeTerminal(id string, cols, rows int) error {
-	return a.ssh.ResizeTerminal(id, cols, rows)
+	c, tid, err := a.terminalClient(id)
+	if err != nil {
+		return err
+	}
+	return c.ResizeTerminal(tid, cols, rows)
 }
-func (a *App) CloseTerminal(id string) { a.ssh.CloseTerminal(id) }
-func (a *App) GetTerminalScrollState(id string) (sshclient.TerminalScrollState, error) { return a.ssh.GetTerminalScrollState(id) }
-func (a *App) ScrollTerminal(id string, value int, relative bool) (sshclient.TerminalScrollState, error) { return a.ssh.ScrollTerminal(id, value, relative) }
+func (a *App) CloseTerminal(id string) {
+	if c, tid, err := a.terminalClient(id); err == nil {
+		c.CloseTerminal(tid)
+	}
+}
+func (a *App) GetTerminalScrollState(id string) (sshclient.TerminalScrollState, error) {
+	c, tid, err := a.terminalClient(id)
+	if err != nil {
+		return sshclient.TerminalScrollState{}, err
+	}
+	return c.GetTerminalScrollState(tid)
+}
+func (a *App) ScrollTerminal(id string, value int, relative bool) (sshclient.TerminalScrollState, error) {
+	c, tid, err := a.terminalClient(id)
+	if err != nil {
+		return sshclient.TerminalScrollState{}, err
+	}
+	return c.ScrollTerminal(tid, value, relative)
+}
+func (a *App) UploadImage(id, data string) (string, error) {
+	c, _, err := a.terminalClient(id)
+	if err != nil {
+		return "", err
+	}
+	return c.UploadImage(data)
+}
 func (a *App) ChoosePrivateKey() (string, error) {
 	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择 SSH 私钥"})
 }

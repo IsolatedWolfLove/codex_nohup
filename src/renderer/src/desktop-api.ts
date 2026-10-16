@@ -9,7 +9,9 @@ type Backend = {
   ResizeTerminal: DesktopApi['resizeTerminal']; CloseTerminal: DesktopApi['closeTerminal'];
   ReadyTerminal: DesktopApi['readyTerminal']; ChoosePrivateKey: DesktopApi['choosePrivateKey'];
   GetTerminalScrollState: DesktopApi['getTerminalScrollState']; ScrollTerminal: DesktopApi['scrollTerminal'];
+  UploadImage: DesktopApi['uploadImage'];
   ConfirmKill: DesktopApi['confirmKill'];
+  ClipboardGetImage: DesktopApi['clipboardGetImage'];
   ClipboardGetText: DesktopApi['clipboardGetText']; ClipboardSetText: DesktopApi['clipboardSetText'];
   AddSSHHost: DesktopApi['addSSHHost'];
   GetSSHConfig: DesktopApi['getSSHConfig']; SaveSSHConfig: DesktopApi['saveSSHConfig'];
@@ -23,18 +25,20 @@ declare global {
 }
 export const desktop: DesktopApi = {
   connect: (input) => window.go.main.App.Connect(input),
-  disconnect: () => window.go.main.App.Disconnect(),
-  listSessions: () => window.go.main.App.ListSessions(),
+  disconnect: (id) => window.go.main.App.Disconnect(id),
+  listSessions: (id) => window.go.main.App.ListSessions(id),
   openSession: (input) => window.go.main.App.OpenSession(input),
-  killSession: (name) => window.go.main.App.KillSession(name),
+  killSession: (id, name) => window.go.main.App.KillSession(id, name),
   writeTerminal: (id, data) => window.go.main.App.WriteTerminal(id, data),
   resizeTerminal: (id, cols, rows) => window.go.main.App.ResizeTerminal(id, cols, rows),
   closeTerminal: (id) => window.go.main.App.CloseTerminal(id),
   readyTerminal: (id) => window.go.main.App.ReadyTerminal(id),
   getTerminalScrollState: (id) => window.go.main.App.GetTerminalScrollState(id),
   scrollTerminal: (id, value, relative) => window.go.main.App.ScrollTerminal(id, value, relative),
+  uploadImage: (id, data) => window.go.main.App.UploadImage(id, data),
   choosePrivateKey: () => window.go.main.App.ChoosePrivateKey(),
   confirmKill: (name) => window.go.main.App.ConfirmKill(name),
+  clipboardGetImage: () => window.go.main.App.ClipboardGetImage(),
   clipboardGetText: () => window.go.main.App.ClipboardGetText(),
   clipboardSetText: (value) => window.go.main.App.ClipboardSetText(value),
   addSSHHost: (alias, command) => window.go.main.App.AddSSHHost(alias, command),

@@ -24,19 +24,19 @@ import (
 const maxHistory = 2 * 1024 * 1024
 
 type terminal struct {
-	mu        sync.Mutex
-	writeMu   sync.Mutex
+	mu         sync.Mutex
+	writeMu    sync.Mutex
 	scrollPane string // Protected by writeMu; only modes entered by our scrollbar.
-	session   *ssh.Session
-	stdin     io.WriteCloser
-	name      string
-	ready     bool
-	ended     bool
-	closed    bool
-	buffer    []byte
-	exitError string
-	emit      func(TerminalEvent)
-	id        string
+	session    *ssh.Session
+	stdin      io.WriteCloser
+	name       string
+	ready      bool
+	ended      bool
+	closed     bool
+	buffer     []byte
+	exitError  string
+	emit       func(TerminalEvent)
+	id         string
 }
 
 func (t *terminal) Write(p []byte) (int, error) {
@@ -166,6 +166,14 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 			signer, err = ssh.ParsePrivateKeyWithPassphrase(data, []byte(input.Passphrase))
 		} else {
 			signer, err = ssh.ParsePrivateKey(data)
+			var encrypted *ssh.PassphraseMissingError
+			if errors.As(err, &encrypted) {
+				pass, promptErr := c.credential("passphrase", "请输入私钥口令："+input.PrivateKeyPath, true)
+				if promptErr != nil {
+					return ConnectionInfo{}, promptErr
+				}
+				signer, err = ssh.ParsePrivateKeyWithPassphrase(data, []byte(pass))
+			}
 		}
 		if err != nil {
 			return ConnectionInfo{}, err
@@ -188,8 +196,12 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 		auths = append(auths, ssh.PublicKeys(signers...))
 	case "auto":
 		methods, cleanups, err := c.autoAuthMethods(input)
-		for _, cleanup := range cleanups { defer cleanup() }
-		if err != nil { return ConnectionInfo{}, err }
+		for _, cleanup := range cleanups {
+			defer cleanup()
+		}
+		if err != nil {
+			return ConnectionInfo{}, err
+		}
 		auths = append(auths, methods...)
 	default:
 		return ConnectionInfo{}, errors.New("不支持的认证方式")
@@ -203,29 +215,48 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 	var err error
 	if input.ProxyJumpHost != "" {
 		jumpInput := ConnectInput{Host: input.ProxyJumpHost, Port: input.ProxyJumpPort, Username: input.ProxyJumpUser, AuthMethod: "auto", PrivateKeyPath: input.ProxyJumpKey, PrivateKeyPaths: input.ProxyJumpKeys}
-		if jumpInput.Port == 0 { jumpInput.Port = 22 }
+		if jumpInput.Port == 0 {
+			jumpInput.Port = 22
+		}
 		jumpAuths, cleanups, authErr := c.autoAuthMethods(jumpInput)
-		if authErr != nil { return ConnectionInfo{}, fmt.Errorf("跳板机认证配置失败：%w", authErr) }
-		for _, cleanup := range cleanups { defer cleanup() }
+		if authErr != nil {
+			return ConnectionInfo{}, fmt.Errorf("跳板机认证配置失败：%w", authErr)
+		}
+		for _, cleanup := range cleanups {
+			defer cleanup()
+		}
 		jumpAddress := net.JoinHostPort(jumpInput.Host, strconv.Itoa(jumpInput.Port))
 		jumpRaw, dialErr := net.DialTimeout("tcp", jumpAddress, 20*time.Second)
-		if dialErr != nil { return ConnectionInfo{}, fmt.Errorf("连接跳板机 %s 失败：%w", jumpAddress, dialErr) }
+		if dialErr != nil {
+			return ConnectionInfo{}, fmt.Errorf("连接跳板机 %s 失败：%w", jumpAddress, dialErr)
+		}
 		_ = jumpRaw.SetDeadline(time.Now().Add(2 * time.Minute))
 		jumpConn, jumpChannels, jumpRequests, handshakeErr := ssh.NewClientConn(jumpRaw, jumpAddress, c.sshClientConfig(jumpInput, jumpAuths))
-		if handshakeErr != nil { jumpRaw.Close(); return ConnectionInfo{}, fmt.Errorf("跳板机 SSH 握手失败：%w", handshakeErr) }
+		if handshakeErr != nil {
+			jumpRaw.Close()
+			return ConnectionInfo{}, fmt.Errorf("跳板机 SSH 握手失败：%w", handshakeErr)
+		}
+		_ = jumpRaw.SetDeadline(time.Time{})
 		proxyClient = ssh.NewClient(jumpConn, jumpChannels, jumpRequests)
 		raw, err = proxyClient.Dial("tcp", address)
-		if err != nil { proxyClient.Close(); return ConnectionInfo{}, fmt.Errorf("通过跳板机连接 %s 失败：%w", address, err) }
+		if err != nil {
+			proxyClient.Close()
+			return ConnectionInfo{}, fmt.Errorf("通过跳板机连接 %s 失败：%w", address, err)
+		}
 	} else {
 		raw, err = net.DialTimeout("tcp", address, 20*time.Second)
-		if err != nil { return ConnectionInfo{}, err }
+		if err != nil {
+			return ConnectionInfo{}, err
+		}
 	}
 	_ = raw.SetDeadline(time.Now().Add(2 * time.Minute)) // Allows time for the first-host confirmation dialog.
 	config := c.sshClientConfig(input, auths)
 	sc, ch, req, err := ssh.NewClientConn(raw, address, config)
 	if err != nil {
 		raw.Close()
-		if proxyClient != nil { proxyClient.Close() }
+		if proxyClient != nil {
+			proxyClient.Close()
+		}
 		return ConnectionInfo{}, err
 	}
 	_ = raw.SetDeadline(time.Time{})
@@ -235,7 +266,9 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 	defer func() {
 		if !ok {
 			client.Close()
-			if proxyClient != nil { proxyClient.Close() }
+			if proxyClient != nil {
+				proxyClient.Close()
+			}
 		}
 	}()
 	probe, err := execCommand(client, `powershell.exe -NoLogo -NoProfile -NonInteractive -Command "[Console]::Out.Write('nohop-windows')"`)
@@ -270,7 +303,9 @@ func (c *Client) sshClientConfig(input ConnectInput, auths []ssh.AuthMethod) *ss
 		for i, question := range questions {
 			c.openURLs(question)
 			answer, err := c.credential("interactive", strings.TrimSpace(instruction+"\n"+question), i >= len(echoes) || !echoes[i])
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			answers[i] = answer
 		}
 		return answers, nil
@@ -298,7 +333,9 @@ func (c *Client) openURLs(message string) {
 }
 func (c *Client) monitor(conn *connection) {
 	_ = conn.client.Wait()
-	if conn.proxy != nil { _ = conn.proxy.Close() }
+	if conn.proxy != nil {
+		_ = conn.proxy.Close()
+	}
 	close(conn.done)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -306,6 +343,7 @@ func (c *Client) monitor(conn *connection) {
 		return
 	}
 	c.conn = nil
+	c.emit(TerminalEvent{Type: "disconnected"})
 	for _, t := range c.terminals {
 		t.finish(nil)
 	}
@@ -354,7 +392,9 @@ func (c *Client) disconnect() {
 	}
 	if conn != nil {
 		_ = conn.client.Close()
-		if conn.proxy != nil { _ = conn.proxy.Close() }
+		if conn.proxy != nil {
+			_ = conn.proxy.Close()
+		}
 	}
 }
 func (c *Client) Disconnect() { c.op.Lock(); defer c.op.Unlock(); c.disconnect() }
@@ -592,8 +632,12 @@ func (c *Client) WriteTerminal(id, data string) error {
 	defer t.writeMu.Unlock()
 	if t.scrollPane != "" {
 		conn, err := c.current()
-		if err != nil { return err }
-		if err := t.leaveHistory(conn); err != nil { return err }
+		if err != nil {
+			return err
+		}
+		if err := t.leaveHistory(conn); err != nil {
+			return err
+		}
 	}
 	_, err := io.WriteString(t.stdin, data)
 	return err

@@ -75,3 +75,27 @@ aside header div { display: grid; gap: 3px; min-width: 0; } aside header strong 
 .add-host-button { margin-bottom: 14px; }
 .add-host-modal { width: min(560px, 90vw); max-height: 90vh; overflow-y: auto; }
 .add-host-modal small { display: block; color: #8296a5; line-height: 1.6; margin-bottom: 16px; }
+
+.connection-overlay { position: fixed; inset: 0; z-index: 40; overflow: auto; }
+.close-connections { position: absolute; right: 28px; top: 18px; background: #17212a; border: 1px solid #344553; border-radius: 8px; padding: 10px 16px; cursor: pointer; }
+.server-list { padding: 12px; max-height: 28vh; overflow: auto; border-bottom: 1px solid #24313d; }
+.server-list > .primary { padding: 9px; margin-bottom: 8px; }
+.server-row { display: flex; border-radius: 7px; border: 1px solid transparent; }
+.server-row.selected { background: #152a2d; border-color: #32625f; }
+.server-row button { color: inherit; background: transparent; border: 0; padding: 9px; text-align: left; cursor: pointer; min-width: 0; }
+.server-row button:first-child { display: grid; gap: 3px; flex: 1; }
+.server-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.server-row small { color: #8ba3af; font-size: 11px; }
+.terminal-area { grid-template-rows: 43px auto minmax(0, 1fr) auto; }
+.layout-toolbar { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid #24313d; color: #8ba3af; font-size: 12px; }
+.layout-toolbar button { background: #101a22; color: #b9cbd7; border: 1px solid #293744; border-radius: 5px; padding: 5px 10px; cursor: pointer; }
+.layout-toolbar button[aria-pressed=true] { color: #71ded1; border-color: #4c958d; }
+.terminal-stack { display: grid; gap: 3px; overflow: auto; }
+.terminal-pane { display: none; position: relative; min-width: 0; min-height: 0; border: 1px solid #202a34; }
+.terminal-pane.visible { display: block; }
+.terminal-pane.focused { border-color: #4c958d; }
+.pane-title { height: 25px; padding: 4px 10px; color: #8ba3af; background: #101820; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.terminal-pane .terminal-host { top: 25px; }
+.layout-columns { grid-auto-flow: column; grid-auto-columns: minmax(240px, 1fr); }
+.layout-rows { grid-auto-rows: minmax(150px, 1fr); }
+.layout-grid { grid-template-columns: repeat(2, minmax(240px, 1fr)); grid-auto-rows: minmax(180px, 1fr); }

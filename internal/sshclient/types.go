@@ -1,6 +1,7 @@
 package sshclient
 
 type ConnectInput struct {
+	ConnectionID    string   `json:"connectionId"`
 	PrivateKeyPaths []string `json:"privateKeyPaths,omitempty"`
 	ProxyJumpKeys   []string `json:"proxyJumpKeys,omitempty"`
 	Alias           string   `json:"alias"`
@@ -26,9 +27,10 @@ type SSHHost struct {
 	ProxyJump  string   `json:"proxyJump,omitempty"`
 }
 type ConnectionInfo struct {
-	Platform string `json:"platform"`
-	Backend  string `json:"backend"`
-	Host     string `json:"host"`
+	ConnectionID string `json:"connectionId"`
+	Platform     string `json:"platform"`
+	Backend      string `json:"backend"`
+	Host         string `json:"host"`
 }
 type PersistentSession struct {
 	Name      string `json:"name"`
@@ -38,10 +40,11 @@ type PersistentSession struct {
 	Backend   string `json:"backend"`
 }
 type CreateSessionInput struct {
-	Name string `json:"name"`
-	Cwd  string `json:"cwd"`
-	Cols int    `json:"cols"`
-	Rows int    `json:"rows"`
+	ConnectionID string `json:"connectionId"`
+	Name         string `json:"name"`
+	Cwd          string `json:"cwd"`
+	Cols         int    `json:"cols"`
+	Rows         int    `json:"rows"`
 }
 type TerminalOpened struct {
 	TerminalID  string `json:"terminalId"`
@@ -51,8 +54,9 @@ type TerminalOpened struct {
 
 // Data is base64 encoded so byte boundaries never corrupt UTF-8 terminal output.
 type TerminalEvent struct {
-	Type       string `json:"type"`
-	TerminalID string `json:"terminalId"`
-	Data       string `json:"data,omitempty"`
-	Message    string `json:"message,omitempty"`
+	ConnectionID string `json:"connectionId"`
+	Type         string `json:"type"`
+	TerminalID   string `json:"terminalId"`
+	Data         string `json:"data,omitempty"`
+	Message      string `json:"message,omitempty"`
 }
