@@ -20,10 +20,26 @@ function fixture(type = 'normal', backend = 'conpty') {
     const event = Object.assign(new Event('wheel', { cancelable: true }), { deltaY, deltaMode });
     surface.dispatchEvent(event); return event;
   };
-  return { scroller, instance, api, wheel, fail };
+  const touch = (type: string, y: number) => {
+    const event = Object.assign(new Event(type, { cancelable: true }), { touches: [{ clientY: y }] });
+    surface.dispatchEvent(event); return event;
+  };
+  return { scroller, instance, api, wheel, touch, fail };
 }
 
 describe('terminal scrolling', () => {
+  it('routes touch drags to remote tmux history and removes handlers on dispose', async () => {
+    const f = fixture('alternate', 'tmux');
+    try {
+      await Promise.resolve();
+      f.touch('touchstart', 100);
+      expect(f.touch('touchmove', 130).defaultPrevented).toBe(true);
+      await vi.waitFor(() => expect(f.api.scrollTerminal).toHaveBeenCalledWith('id', -3, true));
+      expect(f.instance.scrollLines).not.toHaveBeenCalled();
+      f.scroller.dispose();
+      expect(f.touch('touchmove', 150).defaultPrevented).toBe(false);
+    } finally { f.scroller.dispose(); }
+  });
   it('scrolls local history and accumulates touchpad fractions', () => {
     const f = fixture();
     try {

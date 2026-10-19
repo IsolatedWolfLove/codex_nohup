@@ -15,7 +15,9 @@
     "agent:win": "node scripts/build-agent.mjs windows amd64",
     "package:linux": "node scripts/package.mjs linux",
     "package:windows": "node scripts/package.mjs windows",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "build:android": "npm run typecheck && vite build --mode android",
+    "package:android": "node scripts/package-android.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.3",
@@ -33,5 +35,8 @@
   },
   "allowScripts": {
     "esbuild@0.25.12": true
+  },
+  "dependencies": {
+    "@wailsio/runtime": "3.0.0-beta.32"
   }
 }

@@ -11,3 +11,4 @@ resources/agent/*.exe
 !/build/windows/icon.ico
 /src/renderer/wailsjs/
 /build/deb-*/
+/build/android/

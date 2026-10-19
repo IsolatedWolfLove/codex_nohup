@@ -58,6 +58,30 @@ export function bindTerminalScrolling(
     if (remote()) { pendingLines += lines; void pump(); }
     else { instance.scrollLines(lines); localState(); }
   };
+  let touchY: number | null = null;
+  let touchRemainder = 0;
+  const touchStart = (event: TouchEvent) => {
+    touchY = event.touches.length === 1 ? event.touches[0].clientY : null;
+    touchRemainder = 0;
+  };
+  const touchMove = (event: TouchEvent) => {
+    if (disposed || touchY === null || event.touches.length !== 1) return;
+    const next = event.touches[0].clientY;
+    touchRemainder += (touchY - next) / Math.max(1, surface.clientHeight / instance.rows);
+    touchY = next;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const lines = Math.trunc(touchRemainder);
+    touchRemainder -= lines;
+    if (!lines) return;
+    if (remote()) { pendingLines += lines; void pump(); }
+    else { instance.scrollLines(lines); localState(); }
+  };
+  const touchEnd = () => { touchY = null; };
+  surface.addEventListener('touchstart', touchStart, { capture: true, passive: true });
+  surface.addEventListener('touchmove', touchMove, { capture: true, passive: false });
+  surface.addEventListener('touchend', touchEnd, true);
+  surface.addEventListener('touchcancel', touchEnd, true);
   surface.addEventListener('wheel', wheel, { capture: true, passive: false });
   const scroll = instance.onScroll(localState);
   const parsed = instance.onWriteParsed(localState);
@@ -73,6 +97,10 @@ export function bindTerminalScrolling(
       disposed = true;
       window.clearInterval(timer);
       surface.removeEventListener('wheel', wheel, true);
+      surface.removeEventListener('touchstart', touchStart, { capture: true });
+      surface.removeEventListener('touchmove', touchMove, { capture: true });
+      surface.removeEventListener('touchend', touchEnd, { capture: true });
+      surface.removeEventListener('touchcancel', touchEnd, { capture: true });
       scroll.dispose(); parsed.dispose(); resize.dispose();
     },
   };

@@ -13,7 +13,6 @@ import (
 	"nohop-codex/internal/sshclient"
 
 	"github.com/google/uuid"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -42,13 +41,12 @@ func (a *App) startup(ctx context.Context) {
 	a.clients = map[string]*sshclient.Client{}
 }
 func (a *App) newClient(id string) *sshclient.Client {
-	ctx := a.ctx
 	return sshclient.New(func(event sshclient.TerminalEvent) {
 		event.ConnectionID = id
 		if event.TerminalID != "" {
 			event.TerminalID = id + ":" + event.TerminalID
 		}
-		runtime.EventsEmit(ctx, "terminal:event", event)
+		a.emit("terminal:event", event)
 	}, windowsAgent,
 		func(host string, remoteAddr net.Addr, key ssh.PublicKey) error {
 			base, err := os.UserConfigDir()
@@ -59,7 +57,7 @@ func (a *App) newClient(id string) *sshclient.Client {
 				_, err := a.requestCredential("hostkey", fmt.Sprintf("服务器：%s\n主机密钥指纹：%s\n\n确认信任此服务器并保存密钥？", host, fingerprint), false)
 				return err == nil
 			})(host, remoteAddr, key)
-		}, a.requestCredential, func(url string) { runtime.BrowserOpenURL(ctx, url); runtime.EventsEmit(ctx, "auth:url", url) })
+		}, a.requestCredential, func(url string) { a.openURL(url); a.emit("auth:url", url) })
 }
 func (a *App) requestCredential(kind, prompt string, secret bool) (string, error) {
 	id := uuid.NewString()
@@ -67,7 +65,7 @@ func (a *App) requestCredential(kind, prompt string, secret bool) (string, error
 	a.credentialMu.Lock()
 	a.credentials[id] = ch
 	a.credentialMu.Unlock()
-	runtime.EventsEmit(a.ctx, "credential:request", credentialRequest{ID: id, Kind: kind, Prompt: prompt, Secret: secret})
+	a.emit("credential:request", credentialRequest{ID: id, Kind: kind, Prompt: prompt, Secret: secret})
 	var response credentialResponse
 	select {
 	case response = <-ch:
@@ -235,18 +233,4 @@ func (a *App) UploadImage(id, data string) (string, error) {
 		return "", err
 	}
 	return c.UploadImage(data)
-}
-func (a *App) ChoosePrivateKey() (string, error) {
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择 SSH 私钥"})
-}
-func (a *App) ClipboardGetText() (string, error) {
-	return runtime.ClipboardGetText(a.ctx)
-}
-func (a *App) ClipboardSetText(value string) error {
-	return runtime.ClipboardSetText(a.ctx, value)
-}
-func (a *App) ConfirmKill(name string) (bool, error) {
-	choice, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{Type: runtime.QuestionDialog, Title: "结束远端会话", Message: fmt.Sprintf("结束远端会话“%s”？其中运行的进程也会结束。", name), Buttons: []string{"结束会话", "取消"}, DefaultButton: "取消", CancelButton: "取消"})
-	// Linux uses native Yes/No buttons and ignores custom button labels.
-	return choice == "结束会话" || choice == "Yes", err
 }

@@ -120,6 +120,31 @@ Linux 远端安装 `tmux`（推荐）或 `screen`。Windows 远端需要 Windows
 
 ## 自动构建与发布
 
+### Android 客户端（实验版）
+
+Android 版用于从手机 SSH 连接 Linux / Windows 服务器，复用桌面版的远端持久会话。桌面继续使用 Wails v2；Android 使用固定版本的 Wails v3 Android 宿主，无需额外部署中转服务。
+
+- 支持 Android 8.0+ 的 ARM64 手机；新增窄屏侧栏、触摸历史滚动、Esc / Tab / Ctrl+C / Ctrl+D / Ctrl+Z / 方向键与粘贴按钮。
+- 私钥通过系统文件选择器导入应用私有目录；SSH config 和 known_hosts 也存储在应用沙箱内，不读取其他 App 的配置。
+- 图片可通过系统原生粘贴事件上传；Android 的“粘贴”按钮目前读取文本。
+- 切后台或系统终止 App 可能断开 SSH；远端 tmux / screen / Windows 代理中的任务继续运行，返回 App 后可重新挂接。不承诺锁屏期间持续连接。
+
+推送 main、提交 PR 或在 Actions 手动运行 **Build Android APK**，完成后下载 `nohop-codex-android-arm64` artifact，解压并安装其中的 APK。
+
+未配置签名 Secrets 时使用临时调试签名，供下载安装测试；不同构建的签名可能不同，覆盖安装失败时需要卸载旧版（会清除本地配置和导入密钥）。需要稳定升级时，配置 `ANDROID_KEYSTORE_BASE64`（JKS 文件的 Base64）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`。不要把签名私钥提交到仓库。
+
+本地 Linux 打包需安装 JDK 21、Android SDK 35 / build-tools 35.0.0、NDK 28.2.13676358，设置 `ANDROID_HOME` 后执行：
+
+```bash
+npm ci
+go mod download
+npm run package:android
+```
+
+APK 输出到 `release/`。`ANDROID_NDK_HOME` 可指定其他 NDK 路径，`ANDROID_VERSION_CODE` 可指定递增构建号。Android 构建目录由脚本从固定 Wails 模块生成，请勿直接修改 `build/android/`。
+
+### 桌面版本
+
 推送 main 或提交 PR 时运行前端测试、类型检查和 Go 后端竞态测试。推送 `v1.2.3` 或 `v1.2.3-beta.1` tag 后，在 Linux 和 Windows runner 上分别构建安装包，保留 Actions artifacts 30 天，并上传到对应 GitHub Release。
 
 ```bash
