@@ -10,7 +10,7 @@ import (
 )
 
 func (a *App) emit(name string, data any) { application.Get().Event.Emit(name, data) }
-func (a *App) openURL(url string)         { _ = application.Get().Browser.OpenURL(url) }
+func (a *App) openURL(url string)         { application.Android.OpenURL(url) }
 
 func (a *App) ChoosePrivateKey() (string, error) {
 	path, err := application.Get().Dialog.OpenFile().SetTitle("导入 SSH 私钥").PromptForSingleSelection()
