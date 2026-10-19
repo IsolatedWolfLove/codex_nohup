@@ -131,6 +131,8 @@ Android 版用于从手机 SSH 连接 Linux / Windows 服务器，复用桌面�
 
 推送 main、提交 PR 或在 Actions 手动运行 **Build Android APK**，完成后下载 `nohop-codex-android-arm64` artifact，解压并安装其中的 APK。
 
+推送版本 tag 时，**Build tagged releases** 会调用同一 Android 工作流；APK 签名和兼容性验证通过后，与桌面安装包一起上传至对应 GitHub Release，可直接下载 `.apk`。
+
 未配置签名 Secrets 时使用临时调试签名，供下载安装测试；不同构建的签名可能不同，覆盖安装失败时需要卸载旧版（会清除本地配置和导入密钥）。需要稳定升级时，配置 `ANDROID_KEYSTORE_BASE64`（JKS 文件的 Base64）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`。不要把签名私钥提交到仓库。
 
 本地 Linux 打包需安装 JDK 21、Android SDK 35 / build-tools 35.0.0、NDK 28.2.13676358，设置 `ANDROID_HOME` 后执行：
@@ -145,11 +147,11 @@ APK 输出到 `release/`。`ANDROID_NDK_HOME` 可指定其他 NDK 路径，`ANDR
 
 ### 桌面版本
 
-推送 main 或提交 PR 时运行前端测试、类型检查和 Go 后端竞态测试。推送 `v1.2.3` 或 `v1.2.3-beta.1` tag 后，在 Linux 和 Windows runner 上分别构建安装包，保留 Actions artifacts 30 天，并上传到对应 GitHub Release。
+推送 main 或提交 PR 时运行前端测试、类型检查和 Go 后端竞态测试。推送 `v1.2.3` 或 `v1.2.3-beta.1` tag 后，构建 Linux、Windows 安装包和 Android APK，保留 Actions artifacts 30 天，并在全部构建成功后上传到对应 GitHub Release。带 `-beta` 等后缀的 tag 会发布为预发布版本。
 
 ```bash
-git tag -a v2.4.5 -m "Nohop Codex v2.4.5"
-git push origin v2.4.5
+git tag -a v2.7.1-beta -m "Nohop Codex v2.7.1-beta"
+git push origin v2.7.1-beta
 ```
 
 发布构建会从 tag 自动设置 `package.json`、锁文件和 Wails 产品版本。构建完成后，可在 [GitHub Releases](https://github.com/IsolatedWolfLove/codex_nohup/releases) 下载对应版本的安装包。
