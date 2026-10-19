@@ -8,6 +8,7 @@ const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
 if (!sdk) throw new Error('请设置 ANDROID_HOME 并安装 SDK 35 和 NDK 28.2.13676358');
 const ndk = process.env.ANDROID_NDK_HOME ?? path.join(sdk, 'ndk/28.2.13676358');
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
+run('go', ['mod', 'download', 'github.com/wailsapp/wails/v3']);
 const moduleInfo = JSON.parse(execFileSync('go', ['list', '-m', '-json', 'github.com/wailsapp/wails/v3'], { encoding: 'utf8' }));
 if (!moduleInfo.Dir) throw new Error('请先执行 go mod download');
 // Use Java/JNI hosts from the exact same pinned version as the Go framework.
@@ -27,6 +28,7 @@ await edit('app/build.gradle', text => text
   .replace("abiFilters 'arm64-v8a', 'x86_64'", "abiFilters 'arm64-v8a'"));
 await edit('gradle/wrapper/gradle-wrapper.properties', text => text.replace('gradle-9.2.1-bin.zip', 'gradle-8.9-bin.zip'));
 await edit('app/src/main/res/values/strings.xml', text => text.replace('Wails App', 'Nohop Codex'));
+await edit('app/src/main/res/layout/activity_main.xml', text => text.replace('android:id="@+id/main_container"', 'android:id="@+id/main_container" android:fitsSystemWindows="true"'));
 await edit('app/src/main/AndroidManifest.xml', text => text
   .replace('android:allowBackup="true"', 'android:allowBackup="false"')
   .replace(/^.*<uses-permission android:name="android.permission.(?:VIBRATE|USE_BIOMETRIC|POST_NOTIFICATIONS|ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|CAMERA|FOREGROUND_SERVICE|FOREGROUND_SERVICE_DATA_SYNC)" \/>\s*$/gm, '')
