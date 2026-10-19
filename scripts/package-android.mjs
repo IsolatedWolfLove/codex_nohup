@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { cp, mkdir, readFile, rm, writeFile, chmod } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, writeFile, chmod } from 'node:fs/promises';
 import path from 'node:path';
 import { run } from './wails.mjs';
 
@@ -14,8 +14,19 @@ if (!moduleInfo.Dir) throw new Error('请先执行 go mod download');
 // Use Java/JNI hosts from the exact same pinned version as the Go framework.
 const template = path.join(moduleInfo.Dir, 'internal/commands/build_assets/android');
 const project = path.resolve('build/android');
+async function makeWritable(dir) {
+  await chmod(dir, 0o755);
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) await makeWritable(file);
+    else await chmod(file, 0o644);
+  }
+}
+// Go module caches are read-only; fs.cp preserves those file permissions.
+try { await makeWritable(project); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 await rm(project, { recursive: true, force: true });
 await cp(template, project, { recursive: true });
+await makeWritable(project);
 async function edit(file, change) {
   const target = path.join(project, file);
   await writeFile(target, change(await readFile(target, 'utf8')));
