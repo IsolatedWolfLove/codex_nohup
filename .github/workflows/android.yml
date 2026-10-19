@@ -57,8 +57,11 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: npm run package:android
-      - name: Verify APK signature
-        run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release/*.apk'
+      - name: Verify APK signature and native compatibility
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release/*.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 release/*.apk
+          python3 scripts/verify-android-apk.py release/*.apk
       - uses: actions/upload-artifact@v4
         with:
           name: nohop-codex-android-arm64

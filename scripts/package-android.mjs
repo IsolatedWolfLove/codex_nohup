@@ -53,7 +53,7 @@ run('npm', ['run', 'build:android']);
 const libs = path.join(project, 'app/src/main/jniLibs/arm64-v8a');
 await mkdir(libs, { recursive: true });
 const toolchain = path.join(ndk, 'toolchains/llvm/prebuilt/linux-x86_64/bin');
-run('go', ['build', '-buildmode=c-shared', '-tags', 'production', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w', '-o', path.join(libs, 'libwails.so'), '.'], {
+run('go', ['build', '-buildmode=c-shared', '-tags', 'production', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w -extldflags=-Wl,-z,max-page-size=16384,-z,common-page-size=16384', '-o', path.join(libs, 'libwails.so'), '.'], {
   env: { ...process.env, GOOS: 'android', GOARCH: 'arm64', CGO_ENABLED: '1',
     CC: path.join(toolchain, 'aarch64-linux-android26-clang'), CXX: path.join(toolchain, 'aarch64-linux-android26-clang++') },
 });
