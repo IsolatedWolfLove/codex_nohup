@@ -14,7 +14,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func TestUploadImageOverSFTP(t *testing.T) {
+func testSFTPClient(t *testing.T) (*Client, string) {
+	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("checks POSIX remote paths and permissions")
 	}
@@ -74,7 +75,12 @@ func TestUploadImageOverSFTP(t *testing.T) {
 	}
 	c := New(func(TerminalEvent) {}, nil, nil, nil, nil)
 	c.conn = &connection{client: sshConn, info: ConnectionInfo{Platform: "linux"}}
-	defer func() { c.Disconnect(); <-done }()
+	t.Cleanup(func() { c.Disconnect(); <-done })
+	return c, dir
+}
+
+func TestUploadImageOverSFTP(t *testing.T) {
+	c, dir := testSFTPClient(t)
 	png := []byte("\x89PNG\r\n\x1a\nexample")
 	path, err := c.UploadImage(base64.StdEncoding.EncodeToString(png))
 	if err != nil {

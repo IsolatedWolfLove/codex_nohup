@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { cp, mkdir, readFile, readdir, rm, writeFile, chmod } from 'node:fs/promises';
 import path from 'node:path';
 import { run } from './wails.mjs';
+import { installAndroidDownloads } from './android-downloads.mjs';
 
 if (process.platform !== 'linux') throw new Error('Android 打包请使用 Linux 或 GitHub Actions');
 const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
@@ -27,6 +28,7 @@ try { await makeWritable(project); } catch (error) { if (error.code !== 'ENOENT'
 await rm(project, { recursive: true, force: true });
 await cp(template, project, { recursive: true });
 await makeWritable(project);
+await installAndroidDownloads(project);
 async function edit(file, change) {
   const target = path.join(project, file);
   await writeFile(target, change(await readFile(target, 'utf8')));

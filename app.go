@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -233,4 +235,24 @@ func (a *App) UploadImage(id, data string) (string, error) {
 		return "", err
 	}
 	return c.UploadImage(data)
+}
+
+func (a *App) ListFiles(id, dir string) (sshclient.RemoteDirectory, error) {
+	c, err := a.client(id)
+	if err != nil {
+		return sshclient.RemoteDirectory{}, err
+	}
+	return c.ListFiles(dir)
+}
+
+func (a *App) DownloadFile(id, remote string) (string, error) {
+	c, err := a.client(id)
+	if err != nil {
+		return "", err
+	}
+	name := path.Base(strings.ReplaceAll(remote, `\`, "/"))
+	if name == "." || name == "/" || name == "" {
+		return "", errors.New("请选择文件下载")
+	}
+	return a.saveDownload(name, func(dest io.Writer) error { return c.DownloadFile(remote, dest) })
 }

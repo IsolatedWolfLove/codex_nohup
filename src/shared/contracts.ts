@@ -57,3 +57,16 @@ export type TerminalEvent =
   | { type: 'data'; terminalId: string; data: string }
   | { type: 'exit'; terminalId: string }
   | { type: 'error'; terminalId: string; message: string };
+
+export interface RemoteFile {
+ name: string;
+ path: string;
+ isDir: boolean;
+ size: number;
+ modified: number;
+}
+export interface RemoteDirectory {
+ path: string;
+ parent: string;
+ entries: RemoteFile[];
+}

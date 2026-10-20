@@ -48,6 +48,14 @@ Host private
 - 网络断开后，应用按 1、2、4、8、16、30 秒的间隔重试，随后每 30 秒重试。连接恢复后重新挂接原来的持久会话；已在远端结束的会话不会被重建。主动断开会从工作区移除该服务器并停止重连。
 - 应用自动保存服务器、打开的会话、面板顺序、当前标签和布局，下次启动时恢复。密码和私钥口令不保存；需要时重新询问。取消认证或主机密钥校验失败会暂停恢复，点击服务器旁的重试按钮继续。
 
+## SFTP 文件下载
+
+连接服务器后，点击终端上方的「SFTP 文件」进入独立文件页面。默认打开远端登录目录，支持进入文件夹、返回上级、刷新和输入目录路径；返回终端会保留已打开的会话。
+
+点击文件旁的「下载」，或输入远端文件完整路径直接下载，再通过系统“另存为”选择本地位置。文件以流式方式传输；下载失败会清理临时文件，不覆盖已有目标文件。当前仅支持单个普通文件，不支持整目录下载。远端需要启用 SFTP 子系统，复用当前 SSH 认证与跳板机连接。
+
+Android 同样支持下载：先下载到应用临时目录，再弹出系统「保存文件」窗口，可选择「下载」目录或其他文档提供方。保存成功、取消或失败后清理本次临时文件；不申请全盘存储权限。大文件需要足够的应用临时存储空间。
+
 ## 截图粘贴到远端 AI
 
 在本机截图并复制到剪贴板后，聚焦目标终端，按 `Ctrl+Shift+V` / `Shift+Insert` 或使用右键「粘贴」。也支持系统原生粘贴事件中的图片（如 `Ctrl+V`）。
@@ -58,6 +66,12 @@ Host private
 - 远端需启用 SFTP 子系统。支持 PNG、JPEG、GIF、WebP，单张最大 20 MiB；系统剪贴板读取使用 PNG。
 - Linux 远端目录为 `~/.local/share/nohop-codex/images/`，文件权限为 `0600`；Windows 为 `%LOCALAPPDATA%\NohopCodex\images\`。
 - 上传的截图会保留在服务器，便于 AI 后续读取，可按需手动清理。AI 本身须支持图片输入及文件路径读取。
+
+## v2.8.0-beta.1 更新
+
+- 新增独立 SFTP 文件页面，支持目录浏览、路径跳转和单文件下载，返回时保留终端会话。
+- 桌面版通过系统“另存为”选择下载位置；Android 通过系统“保存文件”导出到下载目录或其他文档提供方。
+- 下载复用当前 SSH 与跳板机连接；失败或取消时清理临时文件。
 
 ## v2.4.5 更新
 
@@ -150,8 +164,8 @@ APK 输出到 `release/`。`ANDROID_NDK_HOME` 可指定其他 NDK 路径，`ANDR
 推送 main 或提交 PR 时运行前端测试、类型检查和 Go 后端竞态测试。推送 `v1.2.3` 或 `v1.2.3-beta.1` tag 后，构建 Linux、Windows 安装包和 Android APK，保留 Actions artifacts 30 天，并在全部构建成功后上传到对应 GitHub Release。带 `-beta` 等后缀的 tag 会发布为预发布版本。
 
 ```bash
-git tag -a v2.7.1-beta -m "Nohop Codex v2.7.1-beta"
-git push origin v2.7.1-beta
+git tag -a v2.8.0-beta.1 -m "Nohop Codex v2.8.0-beta.1"
+git push origin v2.8.0-beta.1
 ```
 
 发布构建会从 tag 自动设置 `package.json`、锁文件和 Wails 产品版本。构建完成后，可在 [GitHub Releases](https://github.com/IsolatedWolfLove/codex_nohup/releases) 下载对应版本的安装包。

@@ -1,4 +1,4 @@
-import type { ConnectInput, ConnectionInfo, CreateSessionInput, CredentialRequest, PersistentSession, SSHHost, TerminalEvent, TerminalOpened, TerminalScrollState } from './contracts';
+import type { RemoteDirectory, ConnectInput, ConnectionInfo, CreateSessionInput, CredentialRequest, PersistentSession, SSHHost, TerminalEvent, TerminalOpened, TerminalScrollState } from './contracts';
 
 export interface DesktopApi {
   connect(input: ConnectInput): Promise<ConnectionInfo>;
@@ -12,6 +12,8 @@ export interface DesktopApi {
   readyTerminal(id: string): Promise<void>;
   getTerminalScrollState(id: string): Promise<TerminalScrollState>;
   scrollTerminal(id: string, value: number, relative: boolean): Promise<TerminalScrollState>;
+  listFiles(connectionId: string, path: string): Promise<RemoteDirectory>;
+  downloadFile(connectionId: string, path: string): Promise<string>;
   uploadImage(id: string, data: string): Promise<string>;
   choosePrivateKey(): Promise<string | null>;
   confirmKill(name: string): Promise<boolean>;

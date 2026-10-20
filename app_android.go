@@ -69,3 +69,12 @@ func (a *App) ConfirmKill(name string) (bool, error) {
 		return false, a.ctx.Err()
 	}
 }
+
+// The Android adapter exports this completed staging file through ACTION_CREATE_DOCUMENT.
+func (a *App) saveDownload(name string, transfer func(io.Writer) error) (string, error) {
+	base := application.Android.StoragePath()
+	if base == "" {
+		return "", fmt.Errorf("Android 私有存储不可用")
+	}
+	return stageDownload(filepath.Join(base, "sftp-downloads"), name, transfer)
+}

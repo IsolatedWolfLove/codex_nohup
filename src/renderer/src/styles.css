@@ -130,3 +130,30 @@ aside header div { display: grid; gap: 3px; min-width: 0; } aside header strong 
   .close-connections { position: sticky; display: block; margin: 8px 8px 8px auto; top: 8px; z-index: 1; }
   .layout-columns, .layout-grid { grid-auto-flow: row; grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(200px, 1fr); }
 }
+
+.files-page { height: var(--app-height, 100dvh); display: flex; flex-direction: column; background: #080d12; overflow: auto; }
+.files-header { display: flex; gap: 24px; align-items: center; padding: 22px 28px; border-bottom: 1px solid #293744; background: #10161d; }
+.files-header h1 { margin: 0 0 5px; font-size: 22px; }
+.files-header small { color: #8ba3af; }
+.files-page button { display: inline-flex; gap: 7px; align-items: center; justify-content: center; border: 1px solid #344553; border-radius: 6px; padding: 9px 12px; background: #17212a; cursor: pointer; }
+.files-page button:disabled { opacity: .5; cursor: default; }
+.files-content { width: min(1200px, 100%); margin: 0 auto; padding: 24px; }
+.files-path, .files-direct { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.files-path input, .files-direct input { flex: 1; min-width: 0; margin: 0; }
+.files-status { color: #8ba3af; font-size: 13px; overflow-wrap: anywhere; }
+.files-list { border: 1px solid #293744; border-radius: 9px; overflow: hidden; }
+.files-row { display: grid; grid-template-columns: minmax(0, 1fr) 100px 190px 110px; gap: 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid #202c36; }
+.files-row:last-child { border-bottom: 0; }
+.files-row .files-name { justify-content: flex-start; border: 0; background: transparent; text-align: left; min-width: 0; padding: 5px 0; }
+.files-name span { overflow-wrap: anywhere; }
+.files-row .files-name:disabled { opacity: 1; }
+.files-name svg { flex-shrink: 0; color: #5fd3c7; }
+.files-size, .files-date { color: #8ba3af; font-size: 12px; }
+@media (max-width: 720px) {
+ .files-header { padding: 16px; gap: 16px; }
+ .files-content { padding: 12px; }
+ .files-row { grid-template-columns: minmax(0, 1fr) 70px 85px; gap: 6px; padding: 8px; }
+ .files-date { display: none; }
+ .files-row > button:last-child { padding: 8px; }
+ .files-path { flex-wrap: wrap; }
+}

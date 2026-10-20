@@ -9,6 +9,7 @@ type Backend = {
   ResizeTerminal: DesktopApi['resizeTerminal']; CloseTerminal: DesktopApi['closeTerminal'];
   ReadyTerminal: DesktopApi['readyTerminal']; ChoosePrivateKey: DesktopApi['choosePrivateKey'];
   GetTerminalScrollState: DesktopApi['getTerminalScrollState']; ScrollTerminal: DesktopApi['scrollTerminal'];
+  ListFiles: DesktopApi['listFiles']; DownloadFile: DesktopApi['downloadFile'];
   UploadImage: DesktopApi['uploadImage'];
   ConfirmKill: DesktopApi['confirmKill'];
   ClipboardGetImage: DesktopApi['clipboardGetImage'];
@@ -35,6 +36,8 @@ export const desktop: DesktopApi = {
   readyTerminal: (id) => window.go.main.App.ReadyTerminal(id),
   getTerminalScrollState: (id) => window.go.main.App.GetTerminalScrollState(id),
   scrollTerminal: (id, value, relative) => window.go.main.App.ScrollTerminal(id, value, relative),
+  listFiles: (id, path) => window.go.main.App.ListFiles(id, path),
+  downloadFile: (id, path) => window.go.main.App.DownloadFile(id, path),
   uploadImage: (id, data) => window.go.main.App.UploadImage(id, data),
   choosePrivateKey: () => window.go.main.App.ChoosePrivateKey(),
   confirmKill: (name) => window.go.main.App.ConfirmKill(name),
