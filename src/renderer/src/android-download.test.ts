@@ -7,6 +7,7 @@ import { downloadAndroidFile } from './android-download';
 afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
 
 function setup() {
+  vi.stubGlobal('CustomEvent', class extends Event { detail: unknown; constructor(type: string, options: { detail: unknown }) { super(type); this.detail = options.detail; } });
   const target = new EventTarget();
   const saveFile = vi.fn();
   vi.stubGlobal('window', Object.assign(target, { nohopDownloads: { saveFile } }));
@@ -22,10 +23,14 @@ function setup() {
 describe('Android native file export', () => {
   it('waits for the matching system export result and returns the document URI', async () => {
     const { saveFile, result } = setup();
-    const pending = downloadAndroidFile('server-2', '/work/report.pdf');
+    const stages: unknown[] = [];
+    window.addEventListener('nohop:download-progress', event => stages.push((event as CustomEvent).detail));
+    const pending = downloadAndroidFile('server-2', '/work/report.pdf', 'download-123');
     await vi.waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
-    expect(byName).toHaveBeenCalledWith('main.App.DownloadFile', 'server-2', '/work/report.pdf');
+    expect(byName).toHaveBeenCalledWith('main.App.DownloadFile', 'server-2', '/work/report.pdf', 'download-123');
     const [id, path] = saveFile.mock.calls[0];
+    expect(id).toBe('download-123');
+    expect(stages).toEqual([{ requestId: 'download-123', stage: 'choosing' }]);
     expect(path).toBe('/private/sftp-downloads/download-token/report.pdf');
     let finished = false;
     void pending.then(() => { finished = true; });

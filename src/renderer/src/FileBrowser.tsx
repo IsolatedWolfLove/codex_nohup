@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowUp, Download, File, Folder, RefreshCw } from 'lucide-react';
 import { desktop } from './desktop-api';
-import type { RemoteDirectory } from '../../shared/contracts';
+import { DownloadStatus } from './DownloadStatus';
+import type { DownloadProgress, RemoteDirectory } from '../../shared/contracts';
 
 function message(error: unknown) { return error instanceof Error ? error.message : String(error); }
 function size(bytes: number) {
@@ -15,6 +16,8 @@ export function FileBrowser({ connectionId, serverName, onBack }: { connectionId
   const [path, setPath] = useState('');
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState('');
+  const [progress, setProgress] = useState<DownloadProgress | null>(null);
+  const activeRequest = useRef('');
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const generation = useRef(0);
@@ -36,14 +39,22 @@ export function FileBrowser({ connectionId, serverName, onBack }: { connectionId
     return () => { mounted.current = false; generation.current++; };
   }, [connectionId]);
 
+  useEffect(() => desktop.onDownloadProgress(event => {
+    if (event.requestId !== activeRequest.current) return;
+    setProgress(current => ({ ...current, ...event }));
+  }), []);
+
   async function download(target: string) {
-    if (downloading) return;
-    setDownloading(target); setError(''); setStatus('正在下载，请等待完成…');
+    if (activeRequest.current) return;
+    const requestId = crypto.randomUUID();
+    activeRequest.current = requestId;
+    setProgress(null);
+    setDownloading(target); setError(''); setStatus('正在准备下载…');
     try {
-      const destination = await desktop.downloadFile(connectionId, target);
+      const destination = await desktop.downloadFile(connectionId, target, requestId);
       if (mounted.current) setStatus(destination ? (destination.startsWith('content://') ? '文件已保存到所选位置' : `已保存到 ${destination}`) : '已取消下载');
     } catch (error) { if (mounted.current) { setError(message(error)); setStatus(''); } }
-    finally { if (mounted.current) setDownloading(''); }
+    finally { activeRequest.current = ''; if (mounted.current) { setDownloading(''); setProgress(null); } }
   }
 
   return <main className="files-page">
@@ -63,7 +74,8 @@ export function FileBrowser({ connectionId, serverName, onBack }: { connectionId
         <button disabled={!!downloading}><Download size={16} />下载</button>
       </form>
       {error && <p className="message" role="alert">{error}</p>}
-      <p className="files-status" role="status">{loading ? '正在读取目录…' : status || `${directory?.entries.length ?? 0} 个项目`}</p>
+      {downloading && <DownloadStatus progress={progress} filename={downloading} />}
+      {(!downloading || loading) && <p className="files-status" role="status">{loading ? '正在读取目录…' : status || `${directory?.entries.length ?? 0} 个项目`}</p>}
       <div className="files-list" aria-busy={loading}>
         {directory?.entries.map(entry => <div className="files-row" key={entry.path}>
           <button className="files-name" disabled={loading || !entry.isDir} onClick={() => void load(entry.path)} title={entry.path}>

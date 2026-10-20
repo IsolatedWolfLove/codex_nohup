@@ -70,3 +70,11 @@ export interface RemoteDirectory {
  parent: string;
  entries: RemoteFile[];
 }
+
+export interface DownloadProgress {
+ requestId: string;
+ stage: 'downloading' | 'choosing' | 'saving';
+ transferred?: number;
+ total?: number;
+ bytesPerSecond?: number;
+}

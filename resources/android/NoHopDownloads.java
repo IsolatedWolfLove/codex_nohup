@@ -85,7 +85,19 @@ public final class NoHopDownloads {
                 if (out == null) throw new IllegalStateException("无法打开保存位置");
                 byte[] buffer = new byte[64 * 1024];
                 int count;
-                while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
+                long transferred = 0;
+                long started = android.os.SystemClock.elapsedRealtime();
+                long last = started;
+                exportProgress(0, input.length(), 0);
+                while ((count = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, count);
+                    transferred += count;
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    if (now - last >= 200) {
+                        exportProgress(transferred, input.length(), transferred * 1000.0 / Math.max(1, now - started));
+                        last = now;
+                    }
+                }
                 out.flush();
             } catch (Exception error) {
                 failure = "保存文件失败：" + error;
@@ -94,9 +106,29 @@ public final class NoHopDownloads {
                 catch (Exception ignored) { }
             }
             final String error = failure;
-            activity.runOnUiThread(() -> finish(error.isEmpty() ? uri.toString() : "", error));
+            activity.runOnUiThread(() -> {
+                if (error.isEmpty()) exportProgress(input.length(), input.length(), 0);
+                finish(error.isEmpty() ? uri.toString() : "", error);
+            });
         }, "nohop-file-export").start();
         return true;
+    }
+
+    private void exportProgress(long transferred, long total, double speed) {
+        final String id = requestId;
+        if (id == null) return;
+        activity.runOnUiThread(() -> {
+            if (destroyed) return;
+            try {
+                JSONObject progress = new JSONObject();
+                progress.put("requestId", id);
+                progress.put("stage", "saving");
+                progress.put("transferred", transferred);
+                progress.put("total", total);
+                progress.put("bytesPerSecond", speed);
+                webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('nohop:download-progress', {detail:" + progress + "}));", null);
+            } catch (Exception ignored) { }
+        });
     }
 
     private void finish(String destination, String error) {

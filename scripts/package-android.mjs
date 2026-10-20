@@ -3,10 +3,14 @@ import { cp, mkdir, readFile, readdir, rm, writeFile, chmod } from 'node:fs/prom
 import path from 'node:path';
 import { run } from './wails.mjs';
 import { installAndroidDownloads } from './android-downloads.mjs';
+import { installAndroidIcons } from './android-icons.mjs';
+import { validateAndroidSigning, verifyAndroidSigningCertificate } from './android-signing.mjs';
 
 if (process.platform !== 'linux') throw new Error('Android 打包请使用 Linux 或 GitHub Actions');
 const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
 if (!sdk) throw new Error('请设置 ANDROID_HOME 并安装 SDK 35 和 NDK 28.2.13676358');
+validateAndroidSigning(process.env);
+verifyAndroidSigningCertificate(process.env);
 const ndk = process.env.ANDROID_NDK_HOME ?? path.join(sdk, 'ndk/28.2.13676358');
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
 run('go', ['mod', 'download', 'github.com/wailsapp/wails/v3']);
@@ -47,8 +51,7 @@ await edit('app/src/main/AndroidManifest.xml', text => text
   .replace(/^.*<uses-permission android:name="android.permission.(?:VIBRATE|USE_BIOMETRIC|POST_NOTIFICATIONS|ACCESS_FINE_LOCATION|ACCESS_COARSE_LOCATION|CAMERA|FOREGROUND_SERVICE|FOREGROUND_SERVICE_DATA_SYNC)" \/>\s*$/gm, '')
   .replace(/\s*<queries>[\s\S]*?<\/queries>/, '')
   .replace(/\s*<service[\s\S]*?\/>/, ''));
-await cp('resources/appicon-256.png', path.join(project, 'app/src/main/res/mipmap-xxxhdpi/ic_launcher.png'));
-await cp('resources/appicon-256.png', path.join(project, 'app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png'));
+await installAndroidIcons(project);
 await writeFile(path.join(project, 'local.properties'), `sdk.dir=${sdk}\n`);
 run(process.execPath, ['scripts/build-agent.mjs', 'windows', 'amd64']);
 run('npm', ['run', 'build:android']);

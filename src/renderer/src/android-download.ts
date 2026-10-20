@@ -7,11 +7,11 @@ declare global {
 }
 
 // Keep file bytes native: Go stages the file and Java streams it to a document URI.
-export async function downloadAndroidFile(connectionId: string, remote: string): Promise<string> {
+export async function downloadAndroidFile(connectionId: string, remote: string, requestId: string = crypto.randomUUID()): Promise<string> {
   const native = window.nohopDownloads;
   if (!native) throw new Error('文件导出组件不可用，请更新 Android 安装包');
-  const staged = await Call.ByName('main.App.DownloadFile', connectionId, remote) as string;
-  const id = crypto.randomUUID();
+  const staged = await Call.ByName('main.App.DownloadFile', connectionId, remote, requestId) as string;
+  const id = requestId;
   return new Promise<string>((resolve, reject) => {
     const finish = (event: Event) => {
       const result = (event as CustomEvent<{ id: string; destination: string; error: string }>).detail;
@@ -21,6 +21,7 @@ export async function downloadAndroidFile(connectionId: string, remote: string):
       else resolve(result.destination);
     };
     window.addEventListener('nohop:download-export', finish);
+    window.dispatchEvent(new CustomEvent('nohop:download-progress', { detail: { requestId: id, stage: 'choosing' } }));
     try { native.saveFile(id, staged); }
     catch (error) {
       window.removeEventListener('nohop:download-export', finish);

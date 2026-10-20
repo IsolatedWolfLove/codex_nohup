@@ -37,7 +37,7 @@ export const desktop: DesktopApi = {
   getTerminalScrollState: (id) => window.go.main.App.GetTerminalScrollState(id),
   scrollTerminal: (id, value, relative) => window.go.main.App.ScrollTerminal(id, value, relative),
   listFiles: (id, path) => window.go.main.App.ListFiles(id, path),
-  downloadFile: (id, path) => window.go.main.App.DownloadFile(id, path),
+  downloadFile: (id, path, requestId) => window.go.main.App.DownloadFile(id, path, requestId),
   uploadImage: (id, data) => window.go.main.App.UploadImage(id, data),
   choosePrivateKey: () => window.go.main.App.ChoosePrivateKey(),
   confirmKill: (name) => window.go.main.App.ConfirmKill(name),
@@ -51,6 +51,12 @@ export const desktop: DesktopApi = {
   submitCredential: (id, value, cancelled) => window.go.main.App.SubmitCredential(id, value, cancelled),
   onCredentialRequest: (callback) => window.runtime.EventsOn('credential:request', callback),
   onAuthUrl: (callback) => window.runtime.EventsOn('auth:url', callback),
+  onDownloadProgress: (callback) => {
+    const off = window.runtime.EventsOn('download:progress', callback);
+    const native = (event: Event) => callback((event as CustomEvent).detail);
+    window.addEventListener('nohop:download-progress', native);
+    return () => { off(); window.removeEventListener('nohop:download-progress', native); };
+  },
   onTerminalEvent: (callback) => window.runtime.EventsOn('terminal:event', callback),
 };
 export function decodeTerminalData(data: string): Uint8Array {

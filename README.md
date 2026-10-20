@@ -54,6 +54,8 @@ Host private
 
 点击文件旁的「下载」，或输入远端文件完整路径直接下载，再通过系统“另存为”选择本地位置。文件以流式方式传输；下载失败会清理临时文件，不覆盖已有目标文件。当前仅支持单个普通文件，不支持整目录下载。远端需要启用 SFTP 子系统，复用当前 SSH 认证与跳板机连接。
 
+文件页显示实时进度条、已下载大小、文件总大小和平均传输速度。Android 下载完成后会切换为选择保存位置及写入进度。
+
 Android 同样支持下载：先下载到应用临时目录，再弹出系统「保存文件」窗口，可选择「下载」目录或其他文档提供方。保存成功、取消或失败后清理本次临时文件；不申请全盘存储权限。大文件需要足够的应用临时存储空间。
 
 ## 截图粘贴到远端 AI
@@ -66,6 +68,13 @@ Android 同样支持下载：先下载到应用临时目录，再弹出系统「
 - 远端需启用 SFTP 子系统。支持 PNG、JPEG、GIF、WebP，单张最大 20 MiB；系统剪贴板读取使用 PNG。
 - Linux 远端目录为 `~/.local/share/nohop-codex/images/`，文件权限为 `0600`；Windows 为 `%LOCALAPPDATA%\NohopCodex\images\`。
 - 上传的截图会保留在服务器，便于 AI 后续读取，可按需手动清理。AI 本身须支持图片输入及文件路径读取。
+
+## v2.8.0-beta.2 更新
+
+- 修复 Android 图标：替换全部分辨率资源，并加入自适应图标。
+- 下载页新增百分比、已传输/总大小和速度；Android 写入保存位置时单独显示进度。
+- 使用固定 Android 发布签名，并校验公开证书指纹；后续构建不再使用临时调试签名。
+- 旧版临时签名不能被新固定签名覆盖，首次迁移前请保存本地配置和导入密钥。
 
 ## v2.8.0-beta.1 更新
 
@@ -147,7 +156,13 @@ Android 版用于从手机 SSH 连接 Linux / Windows 服务器，复用桌面�
 
 推送版本 tag 时，**Build tagged releases** 会调用同一 Android 工作流；APK 签名和兼容性验证通过后，与桌面安装包一起上传至对应 GitHub Release，可直接下载 `.apk`。
 
-未配置签名 Secrets 时使用临时调试签名，供下载安装测试；不同构建的签名可能不同，覆盖安装失败时需要卸载旧版（会清除本地配置和导入密钥）。需要稳定升级时，配置 `ANDROID_KEYSTORE_BASE64`（JKS 文件的 Base64）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`。不要把签名私钥提交到仓库。
+Android CI 构建必须配置固定签名 Secrets：`ANDROID_KEYSTORE_BASE64`（JKS 文件的 Base64）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`。缺少任何一项都会明确失败，不再回退到每次可能不同的临时调试签名。所有后续版本必须保留同一份签名私钥；打包前会核对证书，发布时也会将 APK 签名与 `resources/android/release-signing.sha256` 中的固定指纹比较，不一致则拒绝发布。APK 中只有公钥证书，不能从 APK 恢复私钥。不要把签名私钥提交到仓库。
+
+此前使用临时调试签名的版本（包括 v2.7.1-beta、v2.8.0-beta.1）可能无法互相覆盖安装。若原签名私钥未保留，新的固定签名不能覆盖旧版；卸载会清除本地配置和导入密钥，迁移前需先保存这些资料。
+
+固定签名的本机备份位于 `build/signing/`（已加入 Git 忽略规则），密钥和密码必须一起备份到安全位置，不要将此目录提交到仓库。
+
+本地测试如需调试签名，必须显式设置 `ANDROID_ALLOW_DEBUG_SIGNING=1`；此选项不能用于 tag 发布。
 
 本地 Linux 打包需安装 JDK 21、Android SDK 35 / build-tools 35.0.0、NDK 28.2.13676358，设置 `ANDROID_HOME` 后执行：
 
@@ -164,8 +179,8 @@ APK 输出到 `release/`。`ANDROID_NDK_HOME` 可指定其他 NDK 路径，`ANDR
 推送 main 或提交 PR 时运行前端测试、类型检查和 Go 后端竞态测试。推送 `v1.2.3` 或 `v1.2.3-beta.1` tag 后，构建 Linux、Windows 安装包和 Android APK，保留 Actions artifacts 30 天，并在全部构建成功后上传到对应 GitHub Release。带 `-beta` 等后缀的 tag 会发布为预发布版本。
 
 ```bash
-git tag -a v2.8.0-beta.1 -m "Nohop Codex v2.8.0-beta.1"
-git push origin v2.8.0-beta.1
+git tag -a v2.8.0-beta.2 -m "Nohop Codex v2.8.0-beta.2"
+git push origin v2.8.0-beta.2
 ```
 
 发布构建会从 tag 自动设置 `package.json`、锁文件和 Wails 产品版本。构建完成后，可在 [GitHub Releases](https://github.com/IsolatedWolfLove/codex_nohup/releases) 下载对应版本的安装包。

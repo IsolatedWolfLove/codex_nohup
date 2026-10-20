@@ -12,3 +12,6 @@ resources/agent/*.exe
 /src/renderer/wailsjs/
 /build/deb-*/
 /build/android/
+
+# Persistent Android signing material (never commit)
+/build/signing/

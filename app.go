@@ -245,7 +245,7 @@ func (a *App) ListFiles(id, dir string) (sshclient.RemoteDirectory, error) {
 	return c.ListFiles(dir)
 }
 
-func (a *App) DownloadFile(id, remote string) (string, error) {
+func (a *App) DownloadFile(id, remote, requestID string) (string, error) {
 	c, err := a.client(id)
 	if err != nil {
 		return "", err
@@ -254,5 +254,12 @@ func (a *App) DownloadFile(id, remote string) (string, error) {
 	if name == "." || name == "/" || name == "" {
 		return "", errors.New("请选择文件下载")
 	}
-	return a.saveDownload(name, func(dest io.Writer) error { return c.DownloadFile(remote, dest) })
+	if requestID == "" {
+		return "", errors.New("无效下载请求 ID")
+	}
+	return a.saveDownload(name, func(dest io.Writer) error {
+		return c.DownloadFileWithProgress(remote, dest, func(transferred, total int64, speed float64) {
+			a.emit("download:progress", map[string]any{"requestId": requestID, "stage": "downloading", "transferred": transferred, "total": total, "bytesPerSecond": speed})
+		})
+	})
 }

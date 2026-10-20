@@ -7,6 +7,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/pkg/sftp"
 )
@@ -77,6 +78,10 @@ func (c *Client) ListFiles(dir string) (RemoteDirectory, error) {
 }
 
 func (c *Client) DownloadFile(remote string, dest io.Writer) error {
+	return c.DownloadFileWithProgress(remote, dest, nil)
+}
+
+func (c *Client) DownloadFileWithProgress(remote string, dest io.Writer, progress func(int64, int64, float64)) error {
 	ftp, windows, err := c.fileClient()
 	if err != nil {
 		return err
@@ -105,12 +110,47 @@ func (c *Client) DownloadFile(remote string, dest io.Writer) error {
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("请选择普通文件下载")
 	}
-	n, err := io.Copy(dest, file)
+	writer := &downloadWriter{dest: dest, total: info.Size(), started: time.Now(), progress: progress}
+	writer.report(true)
+	// SFTP pipelines reads but serializes writes, preserving throughput and accurate progress.
+	n, err := file.WriteTo(writer)
 	if err != nil {
 		return fmt.Errorf("下载失败：%w", err)
 	}
 	if n != info.Size() {
 		return fmt.Errorf("下载期间文件大小发生变化，请重试")
 	}
+	writer.report(true)
 	return nil
+}
+
+// Throttle events to keep large transfers from flooding the WebView bridge.
+type downloadWriter struct {
+	dest               io.Writer
+	total, transferred int64
+	started, last      time.Time
+	progress           func(int64, int64, float64)
+}
+
+func (w *downloadWriter) Write(p []byte) (int, error) {
+	n, err := w.dest.Write(p)
+	w.transferred += int64(n)
+	w.report(false)
+	return n, err
+}
+func (w *downloadWriter) report(force bool) {
+	if w.progress == nil {
+		return
+	}
+	now := time.Now()
+	if !force && now.Sub(w.last) < 200*time.Millisecond {
+		return
+	}
+	w.last = now
+	elapsed := now.Sub(w.started).Seconds()
+	speed := float64(0)
+	if elapsed > 0 {
+		speed = float64(w.transferred) / elapsed
+	}
+	w.progress(w.transferred, w.total, speed)
 }

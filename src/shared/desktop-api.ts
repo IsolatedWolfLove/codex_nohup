@@ -1,4 +1,4 @@
-import type { RemoteDirectory, ConnectInput, ConnectionInfo, CreateSessionInput, CredentialRequest, PersistentSession, SSHHost, TerminalEvent, TerminalOpened, TerminalScrollState } from './contracts';
+import type { DownloadProgress, RemoteDirectory, ConnectInput, ConnectionInfo, CreateSessionInput, CredentialRequest, PersistentSession, SSHHost, TerminalEvent, TerminalOpened, TerminalScrollState } from './contracts';
 
 export interface DesktopApi {
   connect(input: ConnectInput): Promise<ConnectionInfo>;
@@ -13,7 +13,7 @@ export interface DesktopApi {
   getTerminalScrollState(id: string): Promise<TerminalScrollState>;
   scrollTerminal(id: string, value: number, relative: boolean): Promise<TerminalScrollState>;
   listFiles(connectionId: string, path: string): Promise<RemoteDirectory>;
-  downloadFile(connectionId: string, path: string): Promise<string>;
+  downloadFile(connectionId: string, path: string, requestId: string): Promise<string>;
   uploadImage(id: string, data: string): Promise<string>;
   choosePrivateKey(): Promise<string | null>;
   confirmKill(name: string): Promise<boolean>;
@@ -27,5 +27,6 @@ export interface DesktopApi {
   submitCredential(id: string, value: string, cancelled: boolean): Promise<void>;
   onCredentialRequest(callback: (request: CredentialRequest) => void): () => void;
   onAuthUrl(callback: (url: string) => void): () => void;
+  onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void;
   onTerminalEvent(callback: (event: TerminalEvent) => void): () => void;
 }

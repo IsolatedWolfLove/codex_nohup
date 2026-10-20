@@ -16,6 +16,25 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
+      - name: Require persistent Android signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          missing=0
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing persistent Android signing secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Refusing to publish an APK with a temporary debug certificate. Configure the existing release signing key."
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -35,21 +54,21 @@ jobs:
       - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
       - run: npm ci
       - run: npm test
+      - run: npm run test:android-build
       - run: go test -race ./internal/...
       - name: Set tagged version
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: node scripts/set-release-version.mjs
-      - name: Restore optional release signing key
+      - name: Restore persistent release signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         shell: bash
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/android-release.jks"
-            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/android-release.jks" >> "$GITHUB_ENV"
-          fi
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/android-release.jks"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/android-release.jks" >> "$GITHUB_ENV"
       - name: Build signed APK
         env:
           ANDROID_VERSION_CODE: ${{ github.run_number }}
@@ -62,6 +81,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release/*.apk
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 release/*.apk
           python3 scripts/verify-android-apk.py release/*.apk
+          python3 scripts/verify-android-signature.py "$ANDROID_HOME/build-tools/35.0.0/apksigner" release/*.apk
       - uses: actions/upload-artifact@v4
         with:
           name: nohop-codex-android-arm64
