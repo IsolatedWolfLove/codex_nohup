@@ -343,3 +343,30 @@ func TestAuthURLIsOpenedOncePerConnection(t *testing.T) {
 		t.Fatalf("authentication URL opened %d times", len(opened))
 	}
 }
+
+func TestNativeConsoleReattachHistory(t *testing.T) {
+	var events []TerminalEvent
+	term := &terminal{id: "native", retainHistory: true, emit: func(event TerminalEvent) { events = append(events, event) }}
+	term.Write([]byte("before-ready"))
+	term.markReady()
+	term.Write([]byte("-attached"))
+	if len(events) != 2 {
+		t.Fatal("live data was replayed twice", events)
+	}
+	term.mu.Lock()
+	term.ready = false
+	term.mu.Unlock()
+	term.Write([]byte("-detached"))
+	if len(events) != 2 {
+		t.Fatal("detached console emitted live output")
+	}
+	term.markReady()
+	term.markReady()
+	if len(events) != 3 {
+		t.Fatal("reattach replayed more than once", events)
+	}
+	data, err := base64.StdEncoding.DecodeString(events[2].Data)
+	if err != nil || string(data) != "before-ready-attached-detached" {
+		t.Fatal("history lost", string(data), err)
+	}
+}

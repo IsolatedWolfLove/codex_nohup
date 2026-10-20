@@ -33,3 +33,10 @@ describe('workspace persistence', () => {
     expect([0, 1, 2, 3, 4, 5, 20].map(reconnectDelay)).toEqual([1000, 2000, 4000, 8000, 16000, 30000, 30000]);
   });
 });
+
+it('restores a native local connection without turning it into SSH', () => {
+  const local: ConnectInput = { connectionId: 'local-desktop', local: true, alias: '本机', host: '本机', port: 22, username: '', authMethod: 'auto' };
+  const saved = readWorkspace(JSON.stringify({ servers: [safeConnection(local)], tabs: [{ key: 'native', connectionId: local.connectionId, name: 'work', cwd: '' }] }));
+  expect(saved?.servers[0].local).toBe(true);
+  expect(saved?.tabs[0].connectionId).toBe(local.connectionId);
+});

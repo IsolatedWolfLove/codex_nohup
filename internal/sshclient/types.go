@@ -1,6 +1,7 @@
 package sshclient
 
 type ConnectInput struct {
+	Local           bool     `json:"local"`
 	ConnectionID    string   `json:"connectionId"`
 	PrivateKeyPaths []string `json:"privateKeyPaths,omitempty"`
 	ProxyJumpKeys   []string `json:"proxyJumpKeys,omitempty"`

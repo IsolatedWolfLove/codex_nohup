@@ -28,7 +28,7 @@ func (t *terminal) leaveHistory(conn *connection) error {
 	}
 	target := quoteSh(t.scrollPane)
 	command := "if [ \"$(tmux display-message -p -t " + target + " '#{pane_in_mode}')\" = 1 ]; then tmux send-keys -X -t " + target + " cancel; fi"
-	if _, err := checked(execCommand(conn.client, command)); err != nil {
+	if _, err := checked(execConnectionCommand(conn, command)); err != nil {
 		return err
 	}
 	t.scrollPane = ""
@@ -55,7 +55,7 @@ func parsePaneScrollState(output string) (paneScrollState, error) {
 }
 
 func readPaneScrollState(conn *connection, name string) (paneScrollState, error) {
-	result, err := checked(execCommand(conn.client, "tmux display-message -p -t "+quoteSh("="+name+":")+" "+quoteSh("#{pane_id}|#{history_size}|#{scroll_position}|#{pane_height}|#{pane_in_mode}")))
+	result, err := checked(execConnectionCommand(conn, "tmux display-message -p -t "+quoteSh("="+name+":")+" "+quoteSh("#{pane_id}|#{history_size}|#{scroll_position}|#{pane_height}|#{pane_in_mode}")))
 	if err != nil {
 		return paneScrollState{}, err
 	}
@@ -127,7 +127,7 @@ func (c *Client) ScrollTerminal(id string, value int, relative bool) (TerminalSc
 		command += fmt.Sprintf("tmux send-keys -X -N %d -t %s %s", amount, target, direction)
 	}
 	if command != "" {
-		if _, err := checked(execCommand(conn.client, command)); err != nil {
+		if _, err := checked(execConnectionCommand(conn, command)); err != nil {
 			return TerminalScrollState{}, err
 		}
 	}

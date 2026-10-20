@@ -13,7 +13,7 @@ export const workspaceKey = 'nohop.workspace.v1';
 
 // Explicit allowlist: passwords and passphrases must never reach localStorage.
 export function safeConnection(input: ConnectInput): ConnectInput {
-  return { connectionId: input.connectionId, alias: input.alias, host: input.host,
+  return { local: input.local === true, connectionId: input.connectionId, alias: input.alias, host: input.host,
     port: input.port, username: input.username, authMethod: input.authMethod,
     privateKeyPath: input.privateKeyPath, proxyJumpHost: input.proxyJumpHost,
     proxyJumpPort: input.proxyJumpPort, proxyJumpUser: input.proxyJumpUser, proxyJumpKey: input.proxyJumpKey };

@@ -3,6 +3,7 @@ module nohop-codex
 go 1.26.0
 
 require (
+	github.com/UserExistsError/conpty v0.1.4
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/google/uuid v1.6.0
 	github.com/pkg/sftp v1.13.9

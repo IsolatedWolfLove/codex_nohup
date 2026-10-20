@@ -36,6 +36,9 @@ func decodeImage(data string) ([]byte, string, error) {
 
 // UploadImage stores screenshots on the selected host without executing pasted text.
 func (c *Client) UploadImage(data string) (string, error) {
+	if conn, err := c.current(); err == nil && conn.local {
+		return saveLocalImage(data)
+	}
 	content, ext, err := decodeImage(data)
 	if err != nil {
 		return "", err

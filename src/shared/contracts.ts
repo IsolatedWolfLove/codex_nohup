@@ -1,6 +1,7 @@
 export type AuthMethod = 'auto' | 'password' | 'privateKey' | 'agent';
 
 export interface ConnectInput {
+  local?: boolean;
   connectionId: string;
   alias?: string;
   host: string;
@@ -19,7 +20,7 @@ export interface SSHHost { alias: string; host: string; user?: string; port: num
 export interface CredentialRequest { id: string; kind: string; prompt: string; secret: boolean }
 
 export type RemotePlatform = 'linux' | 'windows';
-export type SessionBackend = 'tmux' | 'screen' | 'conpty' | 'none';
+export type SessionBackend = 'tmux' | 'screen' | 'conpty' | 'local' | 'none';
 
 export interface ConnectionInfo {
   connectionId: string;
@@ -77,4 +78,16 @@ export interface DownloadProgress {
  transferred?: number;
  total?: number;
  bytesPerSecond?: number;
+}
+
+export interface PortForwardInput {
+ direction: 'local' | 'remote';
+ listenHost: string;
+ listenPort: number;
+ targetHost: string;
+ targetPort: number;
+}
+export interface PortForward extends PortForwardInput {
+ id: string;
+ lastError: string;
 }

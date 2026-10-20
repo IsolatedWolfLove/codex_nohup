@@ -106,7 +106,7 @@ func (a *App) shutdown(context.Context) {
 	}
 }
 func (a *App) Connect(input sshclient.ConnectInput) (sshclient.ConnectionInfo, error) {
-	if input.Alias != "" {
+	if input.Alias != "" && !input.Local {
 		content, err := a.GetSSHConfig()
 		if err != nil {
 			return sshclient.ConnectionInfo{}, err
@@ -262,4 +262,26 @@ func (a *App) DownloadFile(id, remote, requestID string) (string, error) {
 			a.emit("download:progress", map[string]any{"requestId": requestID, "stage": "downloading", "transferred": transferred, "total": total, "bytesPerSecond": speed})
 		})
 	})
+}
+
+func (a *App) ListPortForwards(id string) ([]sshclient.PortForward, error) {
+	c, err := a.client(id)
+	if err != nil {
+		return nil, err
+	}
+	return c.ListPortForwards(), nil
+}
+func (a *App) StartPortForward(id string, input sshclient.PortForwardInput) (sshclient.PortForward, error) {
+	c, err := a.client(id)
+	if err != nil {
+		return sshclient.PortForward{}, err
+	}
+	return c.StartPortForward(input)
+}
+func (a *App) StopPortForward(connectionID, id string) error {
+	c, err := a.client(connectionID)
+	if err != nil {
+		return err
+	}
+	return c.StopPortForward(id)
 }

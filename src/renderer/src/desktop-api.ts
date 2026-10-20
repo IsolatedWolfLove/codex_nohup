@@ -9,6 +9,8 @@ type Backend = {
   ResizeTerminal: DesktopApi['resizeTerminal']; CloseTerminal: DesktopApi['closeTerminal'];
   ReadyTerminal: DesktopApi['readyTerminal']; ChoosePrivateKey: DesktopApi['choosePrivateKey'];
   GetTerminalScrollState: DesktopApi['getTerminalScrollState']; ScrollTerminal: DesktopApi['scrollTerminal'];
+  ListPortForwards: DesktopApi['listPortForwards']; StartPortForward: DesktopApi['startPortForward'];
+  StopPortForward: DesktopApi['stopPortForward'];
   ListFiles: DesktopApi['listFiles']; DownloadFile: DesktopApi['downloadFile'];
   UploadImage: DesktopApi['uploadImage'];
   ConfirmKill: DesktopApi['confirmKill'];
@@ -36,6 +38,9 @@ export const desktop: DesktopApi = {
   readyTerminal: (id) => window.go.main.App.ReadyTerminal(id),
   getTerminalScrollState: (id) => window.go.main.App.GetTerminalScrollState(id),
   scrollTerminal: (id, value, relative) => window.go.main.App.ScrollTerminal(id, value, relative),
+  listPortForwards: (id) => window.go.main.App.ListPortForwards(id),
+  startPortForward: (id, input) => window.go.main.App.StartPortForward(id, input),
+  stopPortForward: (connectionId, id) => window.go.main.App.StopPortForward(connectionId, id),
   listFiles: (id, path) => window.go.main.App.ListFiles(id, path),
   downloadFile: (id, path, requestId) => window.go.main.App.DownloadFile(id, path, requestId),
   uploadImage: (id, data) => window.go.main.App.UploadImage(id, data),

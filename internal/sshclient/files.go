@@ -1,6 +1,7 @@
 package sshclient
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -30,6 +31,9 @@ func (c *Client) fileClient() (*sftp.Client, bool, error) {
 	conn, err := c.current()
 	if err != nil {
 		return nil, false, err
+	}
+	if conn.local {
+		return nil, false, errors.New("SFTP 文件浏览需要选择 SSH 服务器")
 	}
 	ftp, err := sftp.NewClient(conn.client)
 	return ftp, conn.info.Platform == "windows", err

@@ -24,19 +24,20 @@ import (
 const maxHistory = 2 * 1024 * 1024
 
 type terminal struct {
-	mu         sync.Mutex
-	writeMu    sync.Mutex
-	scrollPane string // Protected by writeMu; only modes entered by our scrollbar.
-	session    *ssh.Session
-	stdin      io.WriteCloser
-	name       string
-	ready      bool
-	ended      bool
-	closed     bool
-	buffer     []byte
-	exitError  string
-	emit       func(TerminalEvent)
-	id         string
+	mu            sync.Mutex
+	writeMu       sync.Mutex
+	scrollPane    string // Protected by writeMu; only modes entered by our scrollbar.
+	session       terminalSession
+	stdin         io.WriteCloser
+	name          string
+	ready         bool
+	ended         bool
+	closed        bool
+	retainHistory bool
+	buffer        []byte
+	exitError     string
+	emit          func(TerminalEvent)
+	id            string
 }
 
 func (t *terminal) Write(p []byte) (int, error) {
@@ -47,7 +48,8 @@ func (t *terminal) Write(p []byte) (int, error) {
 	}
 	if t.ready {
 		t.emit(TerminalEvent{Type: "data", TerminalID: t.id, Data: base64.StdEncoding.EncodeToString(p)})
-	} else {
+	}
+	if !t.ready || t.retainHistory {
 		t.buffer = append(t.buffer, p...)
 		if len(t.buffer) > maxHistory {
 			t.buffer = append([]byte(nil), t.buffer[len(t.buffer)-maxHistory:]...)
@@ -85,7 +87,9 @@ func (t *terminal) markReady() {
 	// Replay and live data share this lock and the same event transport, preserving order.
 	if len(t.buffer) > 0 {
 		t.emit(TerminalEvent{Type: "data", TerminalID: t.id, Data: base64.StdEncoding.EncodeToString(t.buffer)})
-		t.buffer = nil
+		if !t.retainHistory {
+			t.buffer = nil
+		}
 	}
 	t.ready = true
 	if t.ended {
@@ -101,6 +105,7 @@ func (t *terminal) close() {
 }
 
 type connection struct {
+	local     bool
 	client    *ssh.Client
 	proxy     *ssh.Client
 	info      ConnectionInfo
@@ -112,6 +117,7 @@ type Client struct {
 	mu          sync.Mutex
 	urlMu       sync.Mutex
 	conn        *connection
+	forwards    map[string]*portForward
 	terminals   map[string]*terminal
 	emit        func(TerminalEvent)
 	agentBinary []byte
@@ -134,6 +140,9 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 	c.op.Lock()
 	defer c.op.Unlock()
 	c.disconnect()
+	if input.Local {
+		return c.connectLocal()
+	}
 	c.urlMu.Lock()
 	c.seenURLs = map[string]struct{}{}
 	c.urlMu.Unlock()
@@ -381,6 +390,8 @@ func (c *Client) disconnect() {
 	conn := c.conn
 	c.conn = nil
 	ts := c.terminals
+	forwards := c.forwards
+	c.forwards = nil
 	c.terminals = map[string]*terminal{}
 	c.mu.Unlock()
 	for _, t := range ts {
@@ -390,11 +401,17 @@ func (c *Client) disconnect() {
 		t.finish(nil)
 		t.close()
 	}
-	if conn != nil {
+	if conn != nil && conn.local {
+		close(conn.done)
+	}
+	if conn != nil && !conn.local {
 		_ = conn.client.Close()
 		if conn.proxy != nil {
 			_ = conn.proxy.Close()
 		}
+	}
+	for _, f := range forwards {
+		f.close()
 	}
 }
 func (c *Client) Disconnect() { c.op.Lock(); defer c.op.Unlock(); c.disconnect() }
@@ -447,7 +464,7 @@ func (c *Client) ensureAgent(conn *connection) (string, error) {
 	if conn.agentPath != "" {
 		return conn.agentPath, nil
 	}
-	result, err := checked(execCommand(conn.client, psCommand(`$p=Join-Path $env:LOCALAPPDATA 'NohopCodex\nohop-agent.exe'; [Console]::Out.WriteLine($p); [Console]::Out.Write([int](Test-Path -LiteralPath $p))`)))
+	result, err := checked(execConnectionCommand(conn, psCommand(`$p=Join-Path $env:LOCALAPPDATA 'NohopCodex\nohop-agent.exe'; [Console]::Out.WriteLine($p); [Console]::Out.Write([int](Test-Path -LiteralPath $p))`)))
 	if err != nil {
 		return "", err
 	}
@@ -460,7 +477,7 @@ func (c *Client) ensureAgent(conn *connection) (string, error) {
 		if len(c.agentBinary) == 0 {
 			return "", errors.New("缺少内嵌 Windows ConPTY 代理，请重新构建应用")
 		}
-		if _, err = checked(execCommand(conn.client, psCommand("New-Item -ItemType Directory -Force -Path (Split-Path "+psQuote(remote)+") | Out-Null"))); err != nil {
+		if _, err = checked(execConnectionCommand(conn, psCommand("New-Item -ItemType Directory -Force -Path (Split-Path "+psQuote(remote)+") | Out-Null"))); err != nil {
 			return "", err
 		}
 		ftp, err := sftp.NewClient(conn.client)
@@ -498,12 +515,15 @@ func (c *Client) agentCommand(conn *connection, args ...string) (commandResult, 
 	for i := range args {
 		args[i] = psQuote(args[i])
 	}
-	return checked(execCommand(conn.client, psCommand("& "+psQuote(path)+" "+strings.Join(args, " "))))
+	return checked(execConnectionCommand(conn, psCommand("& "+psQuote(path)+" "+strings.Join(args, " "))))
 }
 func (c *Client) ListSessions() ([]PersistentSession, error) {
 	conn, err := c.current()
 	if err != nil {
 		return nil, err
+	}
+	if conn.local && conn.info.Backend == "local" {
+		return c.localConsoleSessions(), nil
 	}
 	if conn.info.Platform == "windows" {
 		c.op.Lock()
@@ -532,7 +552,7 @@ func (c *Client) ListSessions() ([]PersistentSession, error) {
 	if cmd == "" {
 		return []PersistentSession{}, nil
 	}
-	r, err := checked(execCommand(conn.client, cmd))
+	r, err := checked(execConnectionCommand(conn, cmd))
 	if err != nil {
 		return nil, err
 	}
@@ -544,6 +564,9 @@ func (c *Client) OpenSession(input CreateSessionInput) (TerminalOpened, error) {
 	conn, err := c.current()
 	if err != nil {
 		return TerminalOpened{}, err
+	}
+	if conn.local {
+		return c.openLocalSession(conn, input)
 	}
 	name := normalizeName(input.Name)
 	cols, rows := dimension(input.Cols, 120), dimension(input.Rows, 32)
@@ -649,6 +672,19 @@ func (c *Client) ReadyTerminal(id string) {
 }
 func (c *Client) CloseTerminal(id string) {
 	c.mu.Lock()
+	if c.conn != nil && c.conn.local && c.conn.info.Backend == "local" {
+		t := c.terminals[id]
+		if t != nil {
+			t.mu.Lock()
+			t.ready = false
+			if t.ended {
+				delete(c.terminals, id)
+			}
+			t.mu.Unlock()
+		}
+		c.mu.Unlock()
+		return
+	}
 	t := c.terminals[id]
 	delete(c.terminals, id)
 	c.mu.Unlock()
@@ -676,6 +712,9 @@ func (c *Client) ResizeTerminal(id string, cols, rows int) error {
 	if err != nil {
 		return err
 	}
+	if conn.local {
+		return nil
+	}
 	if conn.info.Platform == "windows" {
 		_, err = c.agentCommand(conn, "resize", "--name", t.name, "--cols", strconv.Itoa(cols), "--rows", strconv.Itoa(rows))
 		return err
@@ -689,6 +728,22 @@ func (c *Client) KillSession(name string) error {
 	if err != nil {
 		return err
 	}
+	if conn.local && conn.info.Backend == "local" {
+		c.mu.Lock()
+		var targets []*terminal
+		for id, t := range c.terminals {
+			if t.name == name {
+				targets = append(targets, t)
+				delete(c.terminals, id)
+			}
+		}
+		c.mu.Unlock()
+		for _, t := range targets {
+			t.finish(nil)
+			t.close()
+		}
+		return nil
+	}
 	if conn.info.Platform == "windows" {
 		_, err = c.agentCommand(conn, "kill", "--name", name)
 		return err
@@ -697,6 +752,6 @@ func (c *Client) KillSession(name string) error {
 	if err != nil {
 		return err
 	}
-	_, err = checked(execCommand(conn.client, cmd))
+	_, err = checked(execConnectionCommand(conn, cmd))
 	return err
 }
