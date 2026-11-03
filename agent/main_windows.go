@@ -246,10 +246,12 @@ func (d *daemon) attach(conn net.Conn, reader *bufio.Reader, req request) {
 	}
 	item.attached = conn
 	history := append([]byte(nil), item.history...)
-	item.mu.Unlock()
+	// Replay under the same lock as capture: live bytes must follow history,
+	// and concurrent writes must never interleave terminal escape sequences.
 	if len(history) > 0 {
 		_, _ = conn.Write(history)
 	}
+	item.mu.Unlock()
 	_, _ = io.Copy(item.pty, reader)
 	item.mu.Lock()
 	if item.attached == conn {

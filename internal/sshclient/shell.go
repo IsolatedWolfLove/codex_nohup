@@ -86,7 +86,11 @@ func attachCommand(backend, name, cwd string) (string, error) {
 		if cwd != "" {
 			dir = " -c " + quoteSh(cwd)
 		}
-		return "if tmux has-session -t " + quoteSh("="+name) + " 2>/dev/null; then exec tmux -u attach-session -t " + quoteSh("="+name) + "; else exec tmux -u new-session -s " + quoteSh(name) + dir + "; fi", nil
+		// Hide tmux's default green status bar for this session, including reattachments.
+		// Keep new-session attached so its initial size comes from the client PTY.
+		target := quoteSh("=" + name)
+		status := "set-option -t " + quoteSh(name) + " status off"
+		return "if tmux has-session -t " + target + " 2>/dev/null; then exec tmux -u " + status + " \\; attach-session -t " + target + "; else exec tmux -u new-session -s " + quoteSh(name) + dir + " \\; " + status + "; fi", nil
 	case "screen":
 		dir := ""
 		if cwd != "" {

@@ -3,6 +3,8 @@ import { FileBrowser } from './FileBrowser';
 import { desktop, decodeTerminalData } from './desktop-api';
 import { useWorkspace, type OpenTerminal } from './use-workspace';
 import { bindTerminalScrolling } from './terminal-scrolling';
+import { bindTerminalLayout } from './terminal-layout';
+import { bindTerminalRendering } from './terminal-rendering';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
@@ -97,18 +99,23 @@ function TerminalView({ item, active, focused, onFocus }: { item: OpenTerminal; 
 
   useEffect(() => {
     if (!surface.current) return;
-    const instance = new Terminal({ cursorBlink: true, convertEol: false, fontFamily: 'JetBrains Mono, Cascadia Code, monospace', fontSize: 14, theme: { background: '#080b10', foreground: '#d7e0ea', cursor: '#64d8cb', selectionBackground: '#264b52' } });
+    const instance = new Terminal({ cols: 120, rows: 32, cursorBlink: true, convertEol: false, fontFamily: 'JetBrains Mono, Cascadia Code, monospace', fontSize: 14, theme: { background: '#080b10', foreground: '#d7e0ea', cursor: '#64d8cb', selectionBackground: '#264b52' } });
     const addon = new FitAddon();
     instance.loadAddon(addon); instance.open(surface.current);
+    const rendering = bindTerminalRendering(instance,
+      () => activeRef.current && document.visibilityState === 'visible');
     let frame = 0;
     let disposed = false;
+    const layout = bindTerminalLayout(() => {
+      if (!activeRef.current || !surface.current?.clientWidth || !surface.current.clientHeight) return null;
+      addon.fit();
+      return { cols: instance.cols, rows: instance.rows };
+    }, (cols, rows) => desktop.resizeTerminal(item.id, cols, rows),
+    () => desktop.readyTerminal(item.id), rendering.refresh,
+    (error) => setScrollError(errorMessage(error)));
     const scheduleFit = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        if (!surface.current?.clientWidth || !surface.current.clientHeight) return;
-        addon.fit();
-        if (instance.cols > 0 && instance.rows > 0) void desktop.resizeTerminal(item.id, instance.cols, instance.rows).catch(() => undefined);
-      });
+      frame = requestAnimationFrame(() => layout.fit());
     };
     terminal.current = instance; fit.current = scheduleFit;
     const scroller = bindTerminalScrolling(instance, surface.current, item.backend, item.id, desktop,
@@ -142,13 +149,20 @@ function TerminalView({ item, active, focused, onFocus }: { item: OpenTerminal; 
       if (event.type === 'error') instance.writeln(`\r\n\x1b[31m${event.message}\x1b[0m`);
       if (event.type === 'exit') instance.writeln('\r\n\x1b[90m[终端已关闭，可从会话列表重新进入仍在运行的会话]\x1b[0m');
     });
-    void desktop.readyTerminal(item.id).catch((error) => instance.writeln(errorMessage(error)));
     const observer = new ResizeObserver(scheduleFit);
     observer.observe(surface.current);
+    // Restoring a minimized window can invalidate the canvas without changing size.
+    const onVisible = () => { if (document.visibilityState === 'visible') scheduleFit(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', scheduleFit);
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
+      layout.dispose();
+      rendering.dispose();
       observer.disconnect();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', scheduleFit);
       scroller.dispose(); scrolling.current = null;
       unsubscribe(); input.dispose(); instance.dispose(); terminal.current = null; fit.current = null;
     };

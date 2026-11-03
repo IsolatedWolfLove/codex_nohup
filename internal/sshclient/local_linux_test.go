@@ -74,6 +74,10 @@ func TestNativeLocalTmux(t *testing.T) {
 		t.Fatal(err)
 	}
 	wait("NATIVE_OK")
+	status, err := exec.Command(tmux, "-L", socket, "show-options", "-v", "-t", "native-work", "status").Output()
+	if err != nil || strings.TrimSpace(string(status)) != "off" {
+		t.Fatalf("status bar should be hidden: %s %v", status, err)
+	}
 	wait(cwd)
 	if err := c.ResizeTerminal(opened.TerminalID, 101, 37); err != nil {
 		t.Fatal(err)
@@ -82,7 +86,7 @@ func TestNativeLocalTmux(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		result, err := exec.Command(tmux, "-L", socket, "display-message", "-p", "-t", "native-work", "#{pane_width} #{pane_height}").Output()
-		if err == nil && strings.HasPrefix(string(result), "101 ") {
+		if err == nil && strings.TrimSpace(string(result)) == "101 37" {
 			break
 		}
 		if time.Now().After(deadline) {
