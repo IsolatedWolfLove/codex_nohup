@@ -5,6 +5,24 @@ import path from 'node:path';
 import os from 'node:os';
 import { installAndroidIcons } from './android-icons.mjs';
 import { validateAndroidSigning } from './android-signing.mjs';
+import { configureAndroidBuild } from './android-project.mjs';
+
+test('Android package identity and versions survive Wails Gradle template syntax changes', () => {
+  for (const assignment of ['', '= ']) {
+    const template = `applicationId ${assignment}"com.wails.app"
+minSdk ${assignment}21
+versionCode ${assignment}1
+versionName ${assignment}"1.0"
+abiFilters 'arm64-v8a', 'x86_64'`;
+    const result = configureAndroidBuild(template, '2.8.2', 42);
+    assert.match(result, /applicationId = "com.nohop.codex"/);
+    assert.match(result, /minSdk = 26/);
+    assert.match(result, /versionCode = 42/);
+    assert.match(result, /versionName = "2.8.2"/);
+    assert.doesNotMatch(result, /x86_64|com.wails.app/);
+  }
+  assert.throws(() => configureAndroidBuild('unknown template', '2.8.2'), /template changed/);
+});
 
 test('Android icons replace template branding in every density and adaptive launcher', async () => {
   const project = await mkdtemp(path.join(os.tmpdir(), 'nohop-icons-'));

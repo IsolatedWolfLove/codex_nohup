@@ -16,7 +16,7 @@ const child = spawn('go', ['build', '-trimpath', '-ldflags=-s -w', '-o', output,
   env: { ...process.env, GOOS: goos, GOARCH: goarch, CGO_ENABLED: '0' },
 });
 child.on('error', (error) => {
-  console.error(`无法启动 Go 编译器：${error.message}\n请安装 Go 1.23+ 后重试。`);
+  console.error(`无法启动 Go 编译器：${error.message}\n请安装 Go 1.26+ 后重试。`);
   process.exit(1);
 });
 child.on('exit', (code) => process.exit(code ?? 1));

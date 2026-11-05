@@ -12,6 +12,8 @@ type Backend = {
   ListPortForwards: DesktopApi['listPortForwards']; StartPortForward: DesktopApi['startPortForward'];
   StopPortForward: DesktopApi['stopPortForward'];
   ListFiles: DesktopApi['listFiles']; DownloadFile: DesktopApi['downloadFile'];
+  DownloadFolder: DesktopApi['downloadFolder']; CancelDownload: DesktopApi['cancelDownload'];
+  ForgetDownload: DesktopApi['forgetDownload']; PreviewFile: DesktopApi['previewFile'];
   UploadImage: DesktopApi['uploadImage'];
   ConfirmKill: DesktopApi['confirmKill'];
   ClipboardGetImage: DesktopApi['clipboardGetImage'];
@@ -43,6 +45,14 @@ export const desktop: DesktopApi = {
   stopPortForward: (connectionId, id) => window.go.main.App.StopPortForward(connectionId, id),
   listFiles: (id, path) => window.go.main.App.ListFiles(id, path),
   downloadFile: (id, path, requestId) => window.go.main.App.DownloadFile(id, path, requestId),
+  downloadFolder: (id, path, requestId) => window.go.main.App.DownloadFolder(id, path, requestId),
+  cancelDownload: async (requestId) => {
+    window.dispatchEvent(new CustomEvent('nohop:download-cancel', { detail: requestId }));
+    await window.go.main.App.CancelDownload(requestId);
+    window.nohopDownloads?.cancel?.(requestId);
+  },
+  forgetDownload: (requestId) => window.go.main.App.ForgetDownload(requestId),
+  previewFile: (id, path, requestId) => window.go.main.App.PreviewFile(id, path, requestId),
   uploadImage: (id, data) => window.go.main.App.UploadImage(id, data),
   choosePrivateKey: () => window.go.main.App.ChoosePrivateKey(),
   confirmKill: (name) => window.go.main.App.ConfirmKill(name),

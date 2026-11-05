@@ -1,4 +1,5 @@
 import type { DownloadProgress, RemoteDirectory, PortForward, PortForwardInput, ConnectInput, ConnectionInfo, CreateSessionInput, CredentialRequest, PersistentSession, SSHHost, TerminalEvent, TerminalOpened, TerminalScrollState } from './contracts';
+import type { FilePreview } from './contracts';
 
 export interface DesktopApi {
   connect(input: ConnectInput): Promise<ConnectionInfo>;
@@ -17,6 +18,10 @@ export interface DesktopApi {
   stopPortForward(connectionId: string, id: string): Promise<void>;
   listFiles(connectionId: string, path: string): Promise<RemoteDirectory>;
   downloadFile(connectionId: string, path: string, requestId: string): Promise<string>;
+  downloadFolder(connectionId: string, path: string, requestId: string): Promise<string>;
+  cancelDownload(requestId: string): Promise<void>;
+  forgetDownload(requestId: string): Promise<void>;
+  previewFile(connectionId: string, path: string, requestId: string): Promise<FilePreview>;
   uploadImage(id: string, data: string): Promise<string>;
   choosePrivateKey(): Promise<string | null>;
   confirmKill(name: string): Promise<boolean>;

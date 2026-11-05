@@ -3,13 +3,31 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+func (a *App) downloadRoot() (string, error) {
+	base, err := os.UserCacheDir()
+	return filepath.Join(base, "NohopCodex", "sftp-downloads"), err
+}
+func (a *App) exportDownload(ctx context.Context, staged string, progress func(int64, int64, float64)) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	destination, err := a.chooseDownloadPath(filepath.Base(staged))
+	if err != nil || destination == "" {
+		return "", err
+	}
+	if err := copyDownload(ctx, staged, destination, progress); err != nil {
+		return "", err
+	}
+	return destination, nil
+}
 
 func (a *App) emit(name string, data any) { runtime.EventsEmit(a.ctx, name, data) }
 func (a *App) openURL(url string)         { runtime.BrowserOpenURL(a.ctx, url) }
@@ -31,29 +49,4 @@ func (a *App) ConfirmKill(name string) (bool, error) {
 
 func (a *App) chooseDownloadPath(name string) (string, error) {
 	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: "下载远端文件", DefaultFilename: name})
-}
-
-// Failed transfers leave an existing destination intact.
-func (a *App) saveDownload(name string, transfer func(io.Writer) error) (string, error) {
-	destination, err := a.chooseDownloadPath(name)
-	if err != nil || destination == "" {
-		return "", err
-	}
-	file, err := os.CreateTemp(filepath.Dir(destination), ".nohop-download-*")
-	if err != nil {
-		return "", err
-	}
-	defer os.Remove(file.Name())
-	transferErr := transfer(file)
-	closeErr := file.Close()
-	if transferErr != nil {
-		return "", transferErr
-	}
-	if closeErr != nil {
-		return "", closeErr
-	}
-	if err := os.Rename(file.Name(), destination); err != nil {
-		return "", err
-	}
-	return destination, nil
 }

@@ -51,7 +51,7 @@ jobs:
         with:
           packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
-      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
       - run: npm ci
       - run: npm test
       - run: npm run test:android-build
@@ -78,10 +78,10 @@ jobs:
         run: npm run package:android
       - name: Verify APK signature and native compatibility
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release/*.apk
-          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 release/*.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose release/*.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 release/*.apk
           python3 scripts/verify-android-apk.py release/*.apk
-          python3 scripts/verify-android-signature.py "$ANDROID_HOME/build-tools/35.0.0/apksigner" release/*.apk
+          python3 scripts/verify-android-signature.py "$ANDROID_HOME/build-tools/36.0.0/apksigner" release/*.apk
       - uses: actions/upload-artifact@v4
         with:
           name: nohop-codex-android-arm64

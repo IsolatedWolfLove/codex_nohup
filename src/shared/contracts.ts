@@ -74,10 +74,18 @@ export interface RemoteDirectory {
 
 export interface DownloadProgress {
  requestId: string;
- stage: 'downloading' | 'choosing' | 'saving';
+ stage: 'downloading' | 'packing' | 'choosing' | 'saving';
  transferred?: number;
  total?: number;
  bytesPerSecond?: number;
+}
+
+export interface FilePreview {
+ name: string;
+ kind: 'text' | 'markdown' | 'pdf' | 'image';
+ mime: string;
+ data: string;
+ truncated: boolean;
 }
 
 export interface PortForwardInput {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const { byName } = vi.hoisted(() => ({ byName: vi.fn() }));
 vi.mock('@wailsio/runtime', () => ({ Call: { ByName: byName } }));
-import { downloadAndroidFile } from './android-download';
+import { downloadAndroidFile, downloadAndroidFolder } from './android-download';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
 
@@ -68,6 +68,27 @@ describe('Android native file export', () => {
     const { saveFile } = setup();
     byName.mockRejectedValue(new Error('连接中断'));
     await expect(downloadAndroidFile('server', '/file')).rejects.toThrow('连接中断');
+    expect(saveFile).not.toHaveBeenCalled();
+  });
+
+  it('exports folder archives through the same native picker', async () => {
+    const { saveFile, result } = setup();
+    const pending = downloadAndroidFolder('server', '/folder', 'archive-id');
+    await vi.waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
+    expect(byName).toHaveBeenCalledWith('main.App.DownloadFolder', 'server', '/folder', 'archive-id');
+    result('archive-id', 'content://archive.zip');
+    await expect(pending).resolves.toBe('content://archive.zip');
+  });
+
+  it('does not launch the picker if cancellation races with SFTP completion', async () => {
+    const { saveFile } = setup();
+    let complete!: (value: string) => void;
+    byName.mockReturnValueOnce(new Promise(resolve => { complete = resolve; }));
+    const pending = downloadAndroidFile('server', '/file', 'cancel-id');
+    const rejected = expect(pending).rejects.toThrow('已取消下载');
+    window.dispatchEvent(new CustomEvent('nohop:download-cancel', { detail: 'cancel-id' }));
+    complete('/private/staged/file');
+    await rejected;
     expect(saveFile).not.toHaveBeenCalled();
   });
 });

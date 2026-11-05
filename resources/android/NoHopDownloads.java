@@ -20,6 +20,7 @@ public final class NoHopDownloads {
     private String requestId;
     private boolean copying;
     private boolean destroyed;
+    private volatile boolean cancelled;
 
     public NoHopDownloads(Activity activity, WebView webView) {
         this.activity = activity;
@@ -46,6 +47,7 @@ public final class NoHopDownloads {
                 if (destroyed || source != null) throw new IllegalStateException("另一个文件正在保存");
                 source = candidate;
                 requestId = id;
+                cancelled = false;
                 Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 String mime = URLConnection.guessContentTypeFromName(source.getName());
@@ -56,9 +58,20 @@ public final class NoHopDownloads {
             } catch (Exception error) {
                 if (id.equals(requestId)) finish("", error.toString());
                 else {
-                    if (candidate != null && !candidate.equals(source)) cleanup(candidate);
                     respond(id, "", error.toString());
                 }
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void cancel(String id) {
+        activity.runOnUiThread(() -> {
+            if (!id.equals(requestId)) return;
+            cancelled = true;
+            if (!copying) {
+                try { activity.finishActivity(SAVE_REQUEST); } catch (Exception ignored) { }
+                finish("", "");
             }
         });
     }
@@ -90,6 +103,7 @@ public final class NoHopDownloads {
                 long last = started;
                 exportProgress(0, input.length(), 0);
                 while ((count = in.read(buffer)) != -1) {
+                    if (cancelled) throw new java.io.InterruptedIOException("已取消保存，下载缓存已保留");
                     out.write(buffer, 0, count);
                     transferred += count;
                     long now = android.os.SystemClock.elapsedRealtime();
@@ -98,6 +112,7 @@ public final class NoHopDownloads {
                         last = now;
                     }
                 }
+                if (cancelled) throw new java.io.InterruptedIOException("已取消保存，下载缓存已保留");
                 out.flush();
             } catch (Exception error) {
                 failure = "保存文件失败：" + error;
@@ -133,7 +148,9 @@ public final class NoHopDownloads {
 
     private void finish(String destination, String error) {
         String id = requestId;
-        if (source != null) cleanup(source);
+        // Retain the completed staging file on cancellation or provider failure.
+        // A retry can reopen the picker without downloading the file again.
+        if (source != null && !destination.isEmpty()) cleanup(source);
         source = null;
         requestId = null;
         copying = false;

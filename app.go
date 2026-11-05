@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -24,6 +22,8 @@ type App struct {
 	clients      map[string]*sshclient.Client
 	credentialMu sync.Mutex
 	credentials  map[string]chan credentialResponse
+	downloadsMu  sync.Mutex
+	downloads    map[string]context.CancelFunc
 }
 type credentialResponse struct {
 	value     string
@@ -97,6 +97,11 @@ func (a *App) SubmitCredential(id, value string, cancelled bool) {
 	}
 }
 func (a *App) shutdown(context.Context) {
+	a.downloadsMu.Lock()
+	for _, cancel := range a.downloads {
+		cancel()
+	}
+	a.downloadsMu.Unlock()
 	a.clientsMu.Lock()
 	clients := a.clients
 	a.clients = map[string]*sshclient.Client{}
@@ -246,22 +251,7 @@ func (a *App) ListFiles(id, dir string) (sshclient.RemoteDirectory, error) {
 }
 
 func (a *App) DownloadFile(id, remote, requestID string) (string, error) {
-	c, err := a.client(id)
-	if err != nil {
-		return "", err
-	}
-	name := path.Base(strings.ReplaceAll(remote, `\`, "/"))
-	if name == "." || name == "/" || name == "" {
-		return "", errors.New("请选择文件下载")
-	}
-	if requestID == "" {
-		return "", errors.New("无效下载请求 ID")
-	}
-	return a.saveDownload(name, func(dest io.Writer) error {
-		return c.DownloadFileWithProgress(remote, dest, func(transferred, total int64, speed float64) {
-			a.emit("download:progress", map[string]any{"requestId": requestID, "stage": "downloading", "transferred": transferred, "total": total, "bytesPerSecond": speed})
-		})
-	})
+	return a.download(id, remote, requestID, false)
 }
 
 func (a *App) ListPortForwards(id string) ([]sshclient.PortForward, error) {

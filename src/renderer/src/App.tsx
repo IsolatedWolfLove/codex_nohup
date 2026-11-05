@@ -1,5 +1,6 @@
 import { PortForwards } from './PortForwards';
 import { FileBrowser } from './FileBrowser';
+import { MobileKeys } from './MobileKeys';
 import { desktop, decodeTerminalData } from './desktop-api';
 import { useWorkspace, type OpenTerminal } from './use-workspace';
 import { bindTerminalScrolling } from './terminal-scrolling';
@@ -183,11 +184,7 @@ function TerminalView({ item, active, focused, onFocus }: { item: OpenTerminal; 
     });
   }}>
     <div ref={surface} className="terminal-surface" />
-    <div className="mobile-keys" aria-label="终端快捷键">
-      {([['Esc', '\x1b'], ['Tab', '\t'], ['Ctrl+C', '\x03'], ['Ctrl+D', '\x04'], ['Ctrl+Z', '\x1a'], ['↑', '\x1b[A'], ['↓', '\x1b[B'], ['←', '\x1b[D'], ['→', '\x1b[C']] as const).map(([label, data]) => <button key={label} onPointerDown={event => event.preventDefault()} onClick={() => { terminal.current?.input(data, true); terminal.current?.focus(); }}>{label}</button>)}
-      <button onPointerDown={event => event.preventDefault()} onClick={pasteClipboard}>粘贴</button>
-      <button onClick={copySelection}>复制选区</button>
-    </div>
+    <MobileKeys send={data => { terminal.current?.input(data, true); terminal.current?.focus(); }} paste={pasteClipboard} copy={copySelection} />
     <input className="terminal-scrollbar" type="range" min={0} max={Math.max(1, scrollState.lines)} step={1}
       value={scrollState.position} disabled={scrollState.lines === 0} aria-label="终端滚动条" aria-orientation="vertical"
       aria-valuetext={scrollState.position === scrollState.lines ? '最新输出' : `历史第 ${scrollState.position + 1} 行`}

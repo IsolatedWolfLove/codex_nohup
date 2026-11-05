@@ -140,6 +140,14 @@ aside header div { display: grid; gap: 3px; min-width: 0; } aside header strong 
 .files-content { width: min(1200px, 100%); margin: 0 auto; padding: 24px; }
 .files-path, .files-direct { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .files-path input, .files-direct input { flex: 1; min-width: 0; margin: 0; }
+.remote-path-input { position: relative; flex: 1; min-width: 0; }
+.remote-path-input input { width: 100%; box-sizing: border-box; }
+.path-completions { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow-y: auto; background: #17212f; color: #e2e8f0; border: 1px solid #475569; border-radius: 6px; box-shadow: 0 8px 24px #0006; }
+.path-completion { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; }
+.path-completion svg { flex-shrink: 0; }
+.path-completion span { overflow-wrap: anywhere; }
+.path-completion.selected { background: #334a68; }
+.path-completion-status { padding: 10px 12px; color: #aab8cb; font-size: 13px; }
 .files-status { color: #8ba3af; font-size: 13px; overflow-wrap: anywhere; }
 .files-list { border: 1px solid #293744; border-radius: 9px; overflow: hidden; }
 .files-row { display: grid; grid-template-columns: minmax(0, 1fr) 100px 190px 110px; gap: 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid #202c36; }
@@ -201,3 +209,55 @@ aside header div { display: grid; gap: 3px; min-width: 0; } aside header strong 
 /* Android IMEs can keep their composing word active after xterm has sent it.
    Keep its layout for IME positioning, but render only the server's echo. */
 .android .xterm .composition-view { visibility: hidden; }
+
+.download-resume { margin: 16px 0; padding: 16px; border: 1px solid #45645b; border-radius: 9px; background: #11251f; }
+.download-resume p { overflow-wrap: anywhere; color: #a7bdb4; font-size: 13px; }
+.download-resume button { margin: 0 8px 6px 0; }
+.file-preview-backdrop { z-index: 60; }
+.file-preview-modal { display: flex; flex-direction: column; width: min(1050px, 96vw); height: min(88vh, 1000px); background: #101820; border: 1px solid #344553; border-radius: 12px; overflow: hidden; }
+.file-preview-modal > header, .shortcuts-modal > header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 15px 20px; border-bottom: 1px solid #293744; }
+.file-preview-modal h2, .shortcuts-modal h2 { font-size: 18px; margin: 0 0 4px; overflow-wrap: anywhere; }
+.file-preview-modal header small { color: #8ba3af; }
+.file-preview-body { flex: 1; min-height: 0; overflow: auto; padding: 18px; }
+.file-preview-body > p { color: #9db0bd; }
+.preview-notice { border: 1px solid #695632; border-radius: 6px; padding: 10px; background: #282317; }
+.text-preview { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 'Cascadia Code', monospace; margin: 0; tab-size: 4; }
+.markdown-preview { line-height: 1.75; overflow-wrap: anywhere; }
+.markdown-preview h1, .markdown-preview h2, .markdown-preview h3 { margin: 1em 0 .5em; }
+.markdown-preview h1 { font-size: 28px; border-bottom: 1px solid #344553; padding-bottom: .4em; }
+.markdown-preview pre { overflow: auto; padding: 14px; background: #080d12; border-radius: 7px; }
+.markdown-preview code { font-family: monospace; background: #080d12; padding: 2px 4px; border-radius: 3px; }
+.markdown-preview table { border-collapse: collapse; display: block; overflow-x: auto; }
+.markdown-preview th, .markdown-preview td { border: 1px solid #344553; padding: 7px 12px; }
+.markdown-preview blockquote { margin-left: 0; padding-left: 16px; border-left: 3px solid #428f85; color: #a5b7c4; }
+.preview-link { color: #6bdacf; text-decoration: underline; }
+.preview-image-placeholder { color: #8ba3af; font-size: 13px; }
+.image-preview { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.preview-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.preview-toolbar span { min-width: 54px; text-align: center; color: #a5b7c4; }
+.pdf-pages { overflow: auto; padding: 8px; background: #26303a; border-radius: 6px; }
+.pdf-pages canvas { display: block; margin: auto; background: white; }
+.shortcuts-modal { width: min(640px, 96vw); max-height: calc(var(--app-height, 100dvh) - 28px); overflow: auto; border: 1px solid #344553; border-radius: 12px; background: #101820; padding-bottom: 18px; }
+.shortcuts-modal > p, .shortcuts-modal > form, .shortcuts-modal > .message { margin: 16px 20px; }
+.shortcuts-modal > p { color: #8ba3af; font-size: 13px; }
+.shortcuts-modal button, .file-preview-modal button { border: 1px solid #344553; border-radius: 6px; padding: 7px 10px; background: #17212a; cursor: pointer; }
+.shortcuts-modal button:disabled, .file-preview-modal button:disabled { opacity: .4; cursor: default; }
+.shortcuts-modal textarea { width: 100%; resize: vertical; color: inherit; background: #080d12; border: 1px solid #344553; border-radius: 6px; padding: 10px; font: inherit; }
+.shortcut-list { margin: 0 20px; }
+.shortcut-list > div { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 9px 0; border-bottom: 1px solid #293744; }
+.shortcut-list strong { min-width: 70px; flex: 1; overflow-wrap: anywhere; }
+.shortcut-list small { color: #8ba3af; margin-right: 8px; }
+.shortcut-modifiers { display: flex; gap: 16px; }
+.shortcuts-modal .shortcut-modifiers label, .shortcuts-modal .shortcut-enter { display: flex; gap: 7px; align-items: center; }
+.shortcuts-modal input[type=checkbox] { width: auto; margin: 0; }
+.shortcuts-modal footer { display: flex; justify-content: flex-end; gap: 8px; margin: 16px 20px 0; }
+@media (max-width: 720px), (pointer: coarse) {
+  .file-preview-modal { width: 100%; height: calc(var(--app-height, 100dvh) - 24px); }
+  .file-preview-body { padding: 12px; }
+  .files-header { padding: 14px; gap: 14px; }
+  .files-content { padding: 14px; }
+  .shortcut-list > div { gap: 4px; }
+  .shortcuts-modal button { min-height: 36px; }
+  .shortcuts-modal .shortcut-list small { display: none; }
+  .preview-toolbar button { padding: 8px; }
+}

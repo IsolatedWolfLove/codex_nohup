@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -8,6 +9,17 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
+
+func (a *App) downloadRoot() (string, error) {
+	base := application.Android.StoragePath()
+	if base == "" {
+		return "", fmt.Errorf("Android 私有存储不可用")
+	}
+	return filepath.Join(base, "sftp-downloads"), nil
+}
+func (a *App) exportDownload(ctx context.Context, staged string, _ func(int64, int64, float64)) (string, error) {
+	return staged, ctx.Err()
+}
 
 func (a *App) emit(name string, data any) { application.Get().Event.Emit(name, data) }
 func (a *App) openURL(url string)         { application.Android.OpenURL(url) }
@@ -68,13 +80,4 @@ func (a *App) ConfirmKill(name string) (bool, error) {
 	case <-a.ctx.Done():
 		return false, a.ctx.Err()
 	}
-}
-
-// The Android adapter exports this completed staging file through ACTION_CREATE_DOCUMENT.
-func (a *App) saveDownload(name string, transfer func(io.Writer) error) (string, error) {
-	base := application.Android.StoragePath()
-	if base == "" {
-		return "", fmt.Errorf("Android 私有存储不可用")
-	}
-	return stageDownload(filepath.Join(base, "sftp-downloads"), name, transfer)
 }

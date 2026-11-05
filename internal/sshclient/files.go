@@ -1,6 +1,7 @@
 package sshclient
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -86,11 +87,21 @@ func (c *Client) DownloadFile(remote string, dest io.Writer) error {
 }
 
 func (c *Client) DownloadFileWithProgress(remote string, dest io.Writer, progress func(int64, int64, float64)) error {
+	return c.DownloadFileRange(context.Background(), remote, dest, 0, nil, progress)
+}
+
+// A resume is accepted only for the same remote file version.
+func (c *Client) DownloadFileRange(ctx context.Context, remote string, dest io.Writer, offset int64, expected *RemoteFile, progress func(int64, int64, float64)) error {
 	ftp, windows, err := c.fileClient()
 	if err != nil {
 		return err
 	}
 	defer ftp.Close()
+	stop := context.AfterFunc(ctx, func() { _ = ftp.Close() })
+	defer stop()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if windows {
 		remote = strings.ReplaceAll(remote, `\`, "/")
 	}
@@ -114,15 +125,34 @@ func (c *Client) DownloadFileWithProgress(remote string, dest io.Writer, progres
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("请选择普通文件下载")
 	}
-	writer := &downloadWriter{dest: dest, total: info.Size(), started: time.Now(), progress: progress}
+	if offset < 0 || offset > info.Size() {
+		return errors.New("无效续传位置")
+	}
+	if expected != nil && (expected.Size != info.Size() || expected.Modified != info.ModTime().Unix()) {
+		return errors.New("远端文件已变化，请移除下载记录后重新下载")
+	}
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
+		return err
+	}
+	writer := &downloadWriter{dest: dest, total: info.Size(), transferred: offset, initial: offset, started: time.Now(), progress: progress}
 	writer.report(true)
 	// SFTP pipelines reads but serializes writes, preserving throughput and accurate progress.
 	n, err := file.WriteTo(writer)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if err != nil {
 		return fmt.Errorf("下载失败：%w", err)
 	}
-	if n != info.Size() {
+	if n+offset != info.Size() {
 		return fmt.Errorf("下载期间文件大小发生变化，请重试")
+	}
+	after, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if after.Size() != info.Size() || after.ModTime() != info.ModTime() {
+		return errors.New("下载期间远端文件已变化，请重新下载")
 	}
 	writer.report(true)
 	return nil
@@ -130,10 +160,10 @@ func (c *Client) DownloadFileWithProgress(remote string, dest io.Writer, progres
 
 // Throttle events to keep large transfers from flooding the WebView bridge.
 type downloadWriter struct {
-	dest               io.Writer
-	total, transferred int64
-	started, last      time.Time
-	progress           func(int64, int64, float64)
+	dest                        io.Writer
+	total, transferred, initial int64
+	started, last               time.Time
+	progress                    func(int64, int64, float64)
 }
 
 func (w *downloadWriter) Write(p []byte) (int, error) {
@@ -154,7 +184,7 @@ func (w *downloadWriter) report(force bool) {
 	elapsed := now.Sub(w.started).Seconds()
 	speed := float64(0)
 	if elapsed > 0 {
-		speed = float64(w.transferred) / elapsed
+		speed = float64(w.transferred-w.initial) / elapsed
 	}
 	w.progress(w.transferred, w.total, speed)
 }

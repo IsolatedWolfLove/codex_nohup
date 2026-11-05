@@ -4,11 +4,12 @@ import path from 'node:path';
 import { run } from './wails.mjs';
 import { installAndroidDownloads } from './android-downloads.mjs';
 import { installAndroidIcons } from './android-icons.mjs';
+import { configureAndroidBuild } from './android-project.mjs';
 import { validateAndroidSigning, verifyAndroidSigningCertificate } from './android-signing.mjs';
 
 if (process.platform !== 'linux') throw new Error('Android 打包请使用 Linux 或 GitHub Actions');
 const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
-if (!sdk) throw new Error('请设置 ANDROID_HOME 并安装 SDK 35 和 NDK 28.2.13676358');
+if (!sdk) throw new Error('请设置 ANDROID_HOME 并安装 SDK 36 和 NDK 28.2.13676358');
 validateAndroidSigning(process.env);
 verifyAndroidSigningCertificate(process.env);
 const ndk = process.env.ANDROID_NDK_HOME ?? path.join(sdk, 'ndk/28.2.13676358');
@@ -37,13 +38,7 @@ async function edit(file, change) {
   const target = path.join(project, file);
   await writeFile(target, change(await readFile(target, 'utf8')));
 }
-await edit('app/build.gradle', text => text
-  .replace('applicationId "com.wails.app"', 'applicationId "com.nohop.codex"')
-  .replace('minSdk 21', 'minSdk 26')
-  .replace('versionCode 1', `versionCode ${process.env.ANDROID_VERSION_CODE ?? 1}`)
-  .replace('versionName "1.0"', `versionName "${pkg.version}"`)
-  .replace("abiFilters 'arm64-v8a', 'x86_64'", "abiFilters 'arm64-v8a'"));
-await edit('gradle/wrapper/gradle-wrapper.properties', text => text.replace('gradle-9.2.1-bin.zip', 'gradle-8.9-bin.zip'));
+await edit('app/build.gradle', text => configureAndroidBuild(text, pkg.version, process.env.ANDROID_VERSION_CODE ?? 1));
 await edit('app/src/main/res/values/strings.xml', text => text.replace('Wails App', 'Nohop Codex'));
 await edit('app/src/main/res/layout/activity_main.xml', text => text.replace('android:id="@+id/main_container"', 'android:id="@+id/main_container" android:fitsSystemWindows="true"'));
 await edit('app/src/main/AndroidManifest.xml', text => text
