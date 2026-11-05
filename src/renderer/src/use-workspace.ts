@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { desktop } from './desktop-api';
 import type { ConnectInput, ConnectionInfo } from '../../shared/contracts';
 import { readWorkspace, reconnectDelay, safeConnection, workspaceKey, type Layout, type SavedTab } from './workspace';
+import { portForwardStore } from './port-forward-store';
 
 export interface OpenTerminal extends SavedTab { id: string; backend: string }
 export interface ServerConnection { input: ConnectInput; info: ConnectionInfo | null; status: string }
@@ -33,6 +34,11 @@ export function useWorkspace(report: (message: string) => void) {
       setServers(current => current.map(s => s.input.connectionId === id ? { ...s, status: attempt ? `重连中（第 ${attempt + 1} 次）` : '正在恢复…' } : s));
       try {
         const info = await desktop.connect(input);
+        if (job.cancelled) return;
+        if (!input.local) {
+          try { await portForwardStore.restore(id, () => job.cancelled); }
+          catch (error) { report(`端口转发恢复失败：${errorText(error)}`); }
+        }
         if (job.cancelled) return;
         const sessions = await desktop.listSessions(id);
         const tabs = state.current.terminals.filter(t => t.connectionId === id);
@@ -95,6 +101,29 @@ export function useWorkspace(report: (message: string) => void) {
       mounted.current = false; off();
       jobs.current.forEach(job => { job.cancelled = true; clearTimeout(job.timer); }); jobs.current.clear();
     };
+  }, []);
+
+  useEffect(() => {
+    // Runs for the entire workspace, including while a file/forward page is open.
+    // Retry failed listeners independently; a busy port must not reconnect SSH.
+    let cancelled = false;
+    let pending = false;
+    const sync = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        for (const server of state.current.servers) {
+          if (cancelled) return;
+          const id = server.input.connectionId;
+          if (!server.info || server.input.local || jobs.current.has(id)) continue;
+          try { await portForwardStore.restore(id, () => cancelled || !state.current.servers.some(s => s.input.connectionId === id && s.info)); }
+          catch (error) { if (!cancelled) report(`端口转发恢复失败：${errorText(error)}`); }
+        }
+      } finally { pending = false; }
+    };
+    void sync();
+    const timer = window.setInterval(() => void sync(), 5000);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, []);
 
   useEffect(() => {
