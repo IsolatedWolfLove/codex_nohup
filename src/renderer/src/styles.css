@@ -269,29 +269,41 @@ aside header div { display: grid; gap: 3px; min-width: 0; } aside header strong 
 .files-page button.danger { color: #ff9696; border-color: #784444; }
 @media (max-width: 720px) { .files-actions { flex-direction: column; } .files-actions button { padding: 8px; } }
 
-/* Sakura Moon — local artwork, no remote wallpaper requests. */
-:root { --sakura: #f5b4d5; --lavender: #c4a7e7; --moon: #eee6fa; }
-.login-shell { background: linear-gradient(90deg, #15122145, #15122188), url('./assets/sakura-moon.svg') center / cover; }
-.brand-panel h1 { color: var(--moon); text-shadow: 0 4px 36px #e89aca55; letter-spacing: -.04em; }
-.brand-panel > p, .feature { color: #d0c2df; }
-.brand-mark { background: #33233e; border: 1px solid #f5b4d540; }
-.connect-card { background: #211b32e8; border-color: #c4a7e750; box-shadow: 0 24px 80px #100c2266, inset 0 1px #ffffff0d; }
-.primary { background: linear-gradient(110deg, #f5b4d5, #c4a7e7); box-shadow: 0 4px 16px #c4a7e718; }
-.primary:hover { background: linear-gradient(110deg, #ffd0e7, #d7c0f3); }
-button:focus-visible, .session-card:focus-visible { outline: 2px solid var(--sakura); outline-offset: 3px; }
-.workspace { background: #151221; }
-aside { background: linear-gradient(180deg, #282037, #1b1728); }
-.terminal-stack { background: url('./assets/sakura-moon.svg') center / cover; }
-.terminal-host { background: linear-gradient(90deg, #151221ed, #151221d9); }
-.terminal-pane { border-radius: 10px; overflow: hidden; }
-.terminal-pane.focused { border-color: #c4a7e799; }
-.pane-title { background: #2c233be8; color: #d1bfdf; }
-.terminal-tab.active { background: #33273e; color: #f8c7e1; border-color: #665078; border-top: 2px solid var(--sakura); }
-.terminal-empty { background: #15122199; color: #bcaccd; }
-.terminal-empty h2 { color: #efdaff; }
-.terminal-empty > svg { color: var(--sakura); filter: drop-shadow(0 0 18px #f5b4d544); }
-.layout-toolbar { background: #211b32; }
-.session-card:hover, .host-card:hover { background: #352940; border-color: #866a99; }
-input:focus, select:focus { box-shadow: 0 0 0 3px #c4a7e720; }
-.status { background: #292235; border-color: #493b59; color: #c9b8d9; }
-* { scrollbar-color: #735b89 #211b32; }
+/* Anime glass: a shared wallpaper remains visible behind transparent xterm surfaces. */
+:root { --sakura: #f2b8d7; --lavender: #b9c5ff; --moon: #f1f3ff; --wallpaper: url('./assets/anime-evening.png'); }
+.login-shell, .workspace { background: linear-gradient(90deg, #111a344d, #111a3410), var(--wallpaper) center / cover; }
+.brand-panel h1 { color: var(--moon); text-shadow: 0 4px 36px #111a34; letter-spacing: -.04em; }
+.brand-panel > p, .feature { color: #e1e7fb; text-shadow: 0 1px 5px #111a34; }
+.brand-mark { background: #27355388; border: 1px solid #ffffff30; }
+.connect-card { background: #18233cba; border-color: #d2dfff40; box-shadow: 0 24px 80px #080e2866, inset 0 1px #ffffff14; backdrop-filter: blur(24px); }
+.primary { background: linear-gradient(115deg, #bdccff, #e5bedf); color: #202a45; box-shadow: 0 4px 18px #a9bdff20; }
+.primary:hover { background: linear-gradient(115deg, #d3ddff, #f5d3eb); }
+button:focus-visible { outline: 2px solid var(--sakura); outline-offset: 3px; }
+aside { background: #141e36b8; backdrop-filter: blur(24px); border-color: #d2dfff26; }
+aside header, .server-list, .new-session { border-color: #d2dfff20; }
+input, select { background: #111b3399; border-color: #bbcdfc30; }
+input:focus, select:focus { border-color: #b9c5ff; box-shadow: 0 0 0 3px #b9c5ff20; }
+.terminal-area { background: transparent; }
+.terminal-area nav { background: #141e36a3; border-color: #d2dfff26; }
+.terminal-stack { background: transparent; gap: 8px; padding: 8px; }
+.terminal-host { background: rgb(12 20 39 / var(--terminal-shade, .45)); }
+.terminal-host .xterm, .terminal-host .xterm-viewport { background-color: transparent !important; }
+.terminal-pane { border-radius: 12px; overflow: hidden; border-color: #c5d5ff30; }
+.terminal-pane.focused { border-color: #c5d5ff80; box-shadow: 0 8px 32px #0c142726; }
+.pane-title { background: #192540ad; color: #dce6ff; }
+.terminal-tab { margin-right: 4px; color: #b7c6e3; }
+.terminal-tab.active { background: #aec6ff26; color: #f4efff; border: 1px solid #c5d5ff40; border-top: 2px solid #e5bedf; }
+.terminal-empty { background: #14203b55; color: #d0dcf5; }
+.terminal-empty h2 { color: #f1f3ff; }
+.terminal-empty > svg { color: #f2b8d7; }
+.layout-toolbar { background: #18243c9c; border-color: #d2dfff26; flex-wrap: wrap; }
+.layout-toolbar button { background: #a9c2ff0d; border-color: #b7ceff30; border-radius: 8px; color: #e0e8fc; }
+.layout-toolbar button[aria-pressed=true] { background: #b9c5ff26; border-color: #b9c5ff88; color: #ffe1f2; }
+.session-card:hover, .host-card:hover, .server-row.selected { background: #b9c5ff20; border-color: #b9c5ff50; }
+.host-card, .host-card.local-connection { background: #182b4680; border-color: #c5d5ff30; }
+.status { background: #14203bc9; border-color: #b7ceff26; color: #c6d3ed; }
+.wallpaper-control { display: flex; align-items: center; gap: 7px; margin: 0 8px 0 0; font-size: 12px; color: #d0dcf5; }
+.wallpaper-control input { width: 80px; padding: 0; accent-color: #d2c0ed; box-shadow: none; }
+.wallpaper-control output { min-width: 30px; font-variant-numeric: tabular-nums; }
+* { scrollbar-color: #8297bd88 #17243b55; }
+@media (max-width: 720px) { .terminal-stack { gap: 4px; padding: 4px; } .workspace { background-position: 70% center; } }
