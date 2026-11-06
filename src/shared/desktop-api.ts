@@ -17,6 +17,8 @@ export interface DesktopApi {
   startPortForward(connectionId: string, input: PortForwardInput): Promise<PortForward>;
   stopPortForward(connectionId: string, id: string): Promise<void>;
   listFiles(connectionId: string, path: string): Promise<RemoteDirectory>;
+  uploadFile(connectionId: string, path: string, requestId: string): Promise<string>;
+  deleteFile(connectionId: string, path: string): Promise<void>;
   downloadFile(connectionId: string, path: string, requestId: string): Promise<string>;
   downloadFolder(connectionId: string, path: string, requestId: string): Promise<string>;
   cancelDownload(requestId: string): Promise<void>;

@@ -100,7 +100,7 @@ function TerminalView({ item, active, focused, onFocus }: { item: OpenTerminal; 
 
   useEffect(() => {
     if (!surface.current) return;
-    const instance = new Terminal({ cols: 120, rows: 32, cursorBlink: true, convertEol: false, fontFamily: 'JetBrains Mono, Cascadia Code, monospace', fontSize: 14, theme: { background: '#080b10', foreground: '#d7e0ea', cursor: '#64d8cb', selectionBackground: '#264b52' } });
+    const instance = new Terminal({ cols: 120, rows: 32, cursorBlink: true, convertEol: false, fontFamily: 'JetBrains Mono, Cascadia Code, monospace', fontSize: 14, lineHeight: 1.12, allowTransparency: true, theme: { background: '#00000000', foreground: '#eee6fa', cursor: '#f5b4d5', cursorAccent: '#151221', selectionBackground: '#c4a7e74d', black: '#282234', red: '#f38ba8', green: '#a6e3a1', yellow: '#f9e2af', blue: '#89b4fa', magenta: '#cba6f7', cyan: '#94e2d5', white: '#ddd6ee', brightBlack: '#9385a8', brightRed: '#ffadc1', brightGreen: '#c2f0b6', brightYellow: '#ffedc4', brightBlue: '#b4d2ff', brightMagenta: '#e0c2ff', brightCyan: '#b2f0e6', brightWhite: '#ffffff' } });
     const addon = new FitAddon();
     instance.loadAddon(addon); instance.open(surface.current);
     const rendering = bindTerminalRendering(instance,

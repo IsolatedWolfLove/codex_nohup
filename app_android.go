@@ -81,3 +81,7 @@ func (a *App) ConfirmKill(name string) (bool, error) {
 		return false, a.ctx.Err()
 	}
 }
+
+func (a *App) chooseUploadFile() (string, error) {
+	return application.Get().Dialog.OpenFile().SetTitle("选择要上传的文件").PromptForSingleSelection()
+}

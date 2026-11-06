@@ -15,6 +15,7 @@ type Backend = {
   DownloadFolder: DesktopApi['downloadFolder']; CancelDownload: DesktopApi['cancelDownload'];
   ForgetDownload: DesktopApi['forgetDownload']; PreviewFile: DesktopApi['previewFile'];
   UploadImage: DesktopApi['uploadImage'];
+  UploadFile: DesktopApi['uploadFile']; DeleteFile: DesktopApi['deleteFile'];
   ConfirmKill: DesktopApi['confirmKill'];
   ClipboardGetImage: DesktopApi['clipboardGetImage'];
   ClipboardGetText: DesktopApi['clipboardGetText']; ClipboardSetText: DesktopApi['clipboardSetText'];
@@ -44,6 +45,8 @@ export const desktop: DesktopApi = {
   startPortForward: (id, input) => window.go.main.App.StartPortForward(id, input),
   stopPortForward: (connectionId, id) => window.go.main.App.StopPortForward(connectionId, id),
   listFiles: (id, path) => window.go.main.App.ListFiles(id, path),
+  uploadFile: (id, path, requestId) => window.go.main.App.UploadFile(id, path, requestId),
+  deleteFile: (id, path) => window.go.main.App.DeleteFile(id, path),
   downloadFile: (id, path, requestId) => window.go.main.App.DownloadFile(id, path, requestId),
   downloadFolder: (id, path, requestId) => window.go.main.App.DownloadFolder(id, path, requestId),
   cancelDownload: async (requestId) => {

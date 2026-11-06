@@ -74,7 +74,7 @@ export interface RemoteDirectory {
 
 export interface DownloadProgress {
  requestId: string;
- stage: 'downloading' | 'packing' | 'choosing' | 'saving';
+ stage: 'uploading' | 'downloading' | 'packing' | 'choosing' | 'saving';
  transferred?: number;
  total?: number;
  bytesPerSecond?: number;

@@ -8,12 +8,13 @@ function bytes(value: number) {
 }
 
 export function DownloadStatus({ progress, filename }: { progress: DownloadProgress | null; filename: string }) {
+  const uploading = progress?.stage === 'uploading';
   const choosing = progress?.stage === 'choosing';
   const transferred = progress?.transferred ?? 0;
   const total = progress?.total;
   const percent = total === undefined ? undefined : total === 0 ? 100 : Math.min(100, Math.max(0, transferred / total * 100));
-  const label = !progress ? '准备下载' : choosing ? '下载完成，请选择保存位置' : progress.stage === 'saving' ? '正在保存到所选位置' : progress.stage === 'packing' ? '正在打包下载' : '正在下载';
-  return <section className="download-status" aria-label="下载进度">
+  const label = uploading ? '正在上传' : !progress ? '准备下载' : choosing ? '下载完成，请选择保存位置' : progress.stage === 'saving' ? '正在保存到所选位置' : progress.stage === 'packing' ? '正在打包下载' : '正在下载';
+  return <section className="download-status" aria-label={uploading ? '上传进度' : '下载进度'}>
     <div className="download-heading"><strong>{label}</strong>{percent !== undefined && <span>{percent.toFixed(1)}%</span>}</div>
     <p className="download-filename" title={filename}>{filename}</p>
     <progress aria-label={label} max={100} value={percent} />

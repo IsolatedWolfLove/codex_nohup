@@ -50,3 +50,7 @@ func (a *App) ConfirmKill(name string) (bool, error) {
 func (a *App) chooseDownloadPath(name string) (string, error) {
 	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: "下载远端文件", DefaultFilename: name})
 }
+
+func (a *App) chooseUploadFile() (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择要上传的文件"})
+}
