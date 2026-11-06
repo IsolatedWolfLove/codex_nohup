@@ -15,6 +15,8 @@ export function bindTerminalScrolling(
   let pendingPosition: number | null = null;
   let remainder = 0;
   const remote = () => backend === 'tmux' && instance.buffer.active.type === 'alternate';
+  // Read on each event: full-screen applications enable/disable this at runtime.
+  const applicationMouse = () => ['vt200', 'drag', 'any'].includes(instance.modes.mouseTrackingMode);
   const localState = () => {
     if (!disposed && !remote()) update({ lines: instance.buffer.active.baseY, position: instance.buffer.active.viewportY, rows: instance.rows });
   };
@@ -23,6 +25,9 @@ export function bindTerminalScrolling(
     running = true;
     try {
       while (!disposed && (pendingPosition !== null || pendingLines !== 0)) {
+        // A queued history gesture must not enter copy mode after a TUI takes over.
+        if (applicationMouse()) pendingLines = 0;
+        if (pendingPosition === null && pendingLines === 0) break;
         const relative = pendingPosition === null;
         const value = relative ? pendingLines : pendingPosition!;
         if (relative) pendingLines = 0; else pendingPosition = null;
@@ -45,7 +50,14 @@ export function bindTerminalScrolling(
     finally { polling = false; void pump(); }
   };
   const wheel = (event: WheelEvent) => {
-    // Capture before xterm's mouse-reporting and alternate-screen arrow fallback.
+    if (applicationMouse()) {
+      // Let xterm encode the wheel using the application's negotiated mouse protocol.
+      // tmux's alternate buffer alone does not mean the user wants shell history.
+      remainder = 0;
+      pendingLines = 0;
+      return;
+    }
+    // With no mouse reporting, own history scrolling and suppress xterm's arrow fallback.
     event.preventDefault();
     event.stopImmediatePropagation();
     if (!event.deltaY) return;

@@ -7,7 +7,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 function fixture(type = 'normal', backend = 'conpty') {
   vi.stubGlobal('window', globalThis);
   const surface = Object.assign(new EventTarget(), { clientHeight: 240, querySelector: () => ({ getBoundingClientRect: () => ({ height: 240 }) }) });
-  const instance = { rows: 24, buffer: { active: { type, baseY: 100, viewportY: 100 } },
+  const instance = { modes: { mouseTrackingMode: 'none' }, rows: 24, buffer: { active: { type, baseY: 100, viewportY: 100 } },
     scrollLines: vi.fn(), scrollToLine: vi.fn(), onScroll: () => ({ dispose() {} }),
     onWriteParsed: () => ({ dispose() {} }), onResize: () => ({ dispose() {} }) };
   const api = {
@@ -28,6 +28,37 @@ function fixture(type = 'normal', backend = 'conpty') {
 }
 
 describe('terminal scrolling', () => {
+  it.each(['vt200', 'drag', 'any'])('passes %s application wheels through without showing shell history', async (mode) => {
+    for (const backend of ['tmux', 'conpty']) {
+      const f = fixture('alternate', backend);
+      try {
+        await Promise.resolve();
+        f.instance.modes.mouseTrackingMode = mode;
+        expect(f.wheel(-3, 1).defaultPrevented).toBe(false);
+        expect(f.wheel(3, 1).defaultPrevented).toBe(false);
+        expect(f.api.scrollTerminal).not.toHaveBeenCalled();
+        expect(f.instance.scrollLines).not.toHaveBeenCalled();
+        // Exiting the application restores normal history scrolling.
+        f.instance.modes.mouseTrackingMode = 'none';
+        expect(f.wheel(-3, 1).defaultPrevented).toBe(true);
+        if (backend === 'tmux') {
+          await vi.waitFor(() => expect(f.api.scrollTerminal).toHaveBeenCalledWith('id', -3, true));
+        } else expect(f.instance.scrollLines).toHaveBeenCalledWith(-3);
+      } finally { f.scroller.dispose(); }
+    }
+  });
+  it('drops queued history wheels when an application enables mouse reporting', async () => {
+    const f = fixture('alternate', 'tmux');
+    try {
+      // Initial remote state polling holds the history request in the queue.
+      f.wheel(-3, 1);
+      f.instance.modes.mouseTrackingMode = 'drag';
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(f.api.scrollTerminal).not.toHaveBeenCalled();
+    } finally { f.scroller.dispose(); }
+  });
+
   it('routes touch drags to remote tmux history and removes handlers on dispose', async () => {
     const f = fixture('alternate', 'tmux');
     try {
