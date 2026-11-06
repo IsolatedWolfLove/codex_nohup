@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { completedPath, completionTarget, matchingPaths } from './path-completion';
+import { completedPath, completionTarget, matchingPaths, sessionDirectory } from './path-completion';
 import type { RemoteFile } from '../../shared/contracts';
 
 const entries: RemoteFile[] = [
@@ -27,5 +27,21 @@ describe('remote path completion', () => {
   it('appends a separator only for directories so completion can continue', () => {
     expect(completedPath(entries[0])).toBe('/home/u/project.txt');
     expect(completedPath(entries[1])).toBe('/home/u/projects/');
+  });
+});
+
+describe('session working directory', () => {
+  it('completes home prefixes against the selected server home', () => {
+    expect(completionTarget('~', '/home/alice', '/home/alice')).toEqual({ parent: '/home/alice/', prefix: '' });
+    expect(completionTarget('~/pro', '/home/alice', '/home/alice')).toEqual({ parent: '/home/alice/', prefix: 'pro' });
+    expect(completionTarget('~/projects/sr', '/home/alice', '/home/alice')).toEqual({ parent: '/home/alice/projects/', prefix: 'sr' });
+    expect(completionTarget('~/Do', 'C:/Users/Alice', 'C:/Users/Alice')).toEqual({ parent: 'C:/Users/Alice/', prefix: 'Do' });
+  });
+  it('launches in the same directory used by completion', () => {
+    for (const value of ['', '~', '  ~  ']) expect(sessionDirectory(value, '/home/alice')).toBe('/home/alice');
+    expect(sessionDirectory('~/projects', '/home/alice')).toBe('/home/alice/projects');
+    expect(sessionDirectory('projects/sub', '/home/alice')).toBe('/home/alice/projects/sub');
+    expect(sessionDirectory('/opt/work', '/home/alice')).toBe('/opt/work');
+    expect(sessionDirectory('D:/work', 'C:/Users/Alice')).toBe('D:/work');
   });
 });

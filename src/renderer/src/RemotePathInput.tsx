@@ -4,9 +4,9 @@ import type { RemoteDirectory, RemoteFile } from '../../shared/contracts';
 import { desktop } from './desktop-api';
 import { completedPath, completionTarget, matchingPaths } from './path-completion';
 
-export function RemotePathInput({ connectionId, directory, value, onChange, directoriesOnly = false, label, placeholder, name, disabled, required }: {
+export function RemotePathInput({ connectionId, directory, value, onChange, directoriesOnly = false, label, placeholder, name, disabled, required, home }: {
   connectionId: string; directory: RemoteDirectory | null; value: string; onChange: (value: string) => void;
-  directoriesOnly?: boolean; label: string; placeholder: string; name?: string; disabled?: boolean; required?: boolean;
+  home?: string; directoriesOnly?: boolean; label: string; placeholder: string; name?: string; disabled?: boolean; required?: boolean;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -16,7 +16,7 @@ export function RemotePathInput({ connectionId, directory, value, onChange, dire
   const [active, setActive] = useState(0);
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
-  const target = completionTarget(value, directory?.path ?? '');
+  const target = completionTarget(value, directory?.path ?? '', home);
   const suggestions = matchingPaths(entries, target.prefix, directoriesOnly);
   const visible = open && !disabled;
 
@@ -52,6 +52,7 @@ export function RemotePathInput({ connectionId, directory, value, onChange, dire
     <input ref={input} name={name} aria-label={label} placeholder={placeholder} value={value} disabled={disabled} required={required}
       role="combobox" aria-autocomplete="list" aria-expanded={visible} aria-controls={`${id}-options`}
       aria-activedescendant={visible && suggestions[active] ? `${id}-option-${active}` : undefined} autoComplete="off" spellCheck={false}
+      onFocus={() => setOpen(true)}
       onChange={event => { onChange(event.target.value); setActive(0); setOpen(true); }}
       onKeyDown={event => {
         if (event.nativeEvent.isComposing) return;
