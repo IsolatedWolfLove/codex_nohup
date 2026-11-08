@@ -325,3 +325,8 @@ input:focus, select:focus { border-color: #b9c5ff; box-shadow: 0 0 0 3px #b9c5ff
 
 .terminal-tab .tab-select { touch-action: none; user-select: none; cursor: grab; }
 .terminal-tab .tab-select:active { cursor: grabbing; }
+
+.tab-context-menu { position: fixed; z-index: 70; width: 208px; padding: 5px; border: 1px solid #554465; border-radius: 9px; background: #302740; box-shadow: 0 12px 32px #000a; --wails-draggable: no-drag; }
+.tab-context-menu button { width: 100%; padding: 10px; border: 0; border-radius: 6px; background: transparent; color: #eee6fa; text-align: left; cursor: pointer; font-size: 13px; }
+.tab-context-menu button:hover, .tab-context-menu button:focus-visible { background: #493b59; outline: none; }
+.tab-context-menu button:disabled { opacity: .45; cursor: not-allowed; }
