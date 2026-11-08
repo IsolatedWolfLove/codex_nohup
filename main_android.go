@@ -19,6 +19,9 @@ var windowsAgent []byte
 
 func init() { application.RegisterAndroidMain(main) }
 
+//go:embed resources/appicon-256.png
+var appIcon []byte
+
 func main() {
 	// The JNI bridge is ready before the registered main function runs.
 	base := application.Android.StoragePath()
@@ -38,6 +41,7 @@ func main() {
 	defer cancel()
 	backend.startup(ctx)
 	app := application.New(application.Options{
+		Icon: appIcon,
 		Name: "Nohop Codex", Description: "Persistent SSH terminal",
 		Services: []application.Service{application.NewService(backend)},
 		Assets:   application.AssetOptions{Handler: application.AssetFileServerFS(assets)},

@@ -15,3 +15,5 @@ resources/agent/*.exe
 
 # Persistent Android signing material (never commit)
 /build/signing/
+
+/rsrc_windows_*.syso

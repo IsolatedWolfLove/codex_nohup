@@ -9,6 +9,7 @@ InstallDir "$PROGRAMFILES64\IsolatedWolfLove\Nohop Codex"
 InstallDirRegKey HKLM "${UNINSTALL_KEY}" "InstallLocation"
 RequestExecutionLevel admin
 ManifestDPIAware True
+!define MUI_UNICON "..\build\windows\icon.ico"
 !define MUI_ICON "..\build\windows\icon.ico"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES

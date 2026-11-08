@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+ <defs>
+  <linearGradient id="tile" x1="25" y1="10" x2="228" y2="256" gradientUnits="userSpaceOnUse"><stop stop-color="#142C3E"/><stop offset="1" stop-color="#090E1B"/></linearGradient>
+  <linearGradient id="cloud" x1="47" y1="90" x2="206" y2="190" gradientUnits="userSpaceOnUse"><stop stop-color="#8BF5E2"/><stop offset=".48" stop-color="#39D7D2"/><stop offset="1" stop-color="#52A7F5"/></linearGradient>
+  <linearGradient id="spark" x1="180" y1="61" x2="198" y2="85" gradientUnits="userSpaceOnUse"><stop stop-color="#FFE7A0"/><stop offset="1" stop-color="#F5AF4C"/></linearGradient>
+ </defs>
+ <rect x="8" y="8" width="240" height="240" rx="62" fill="url(#tile)"/>
+ <rect x="8.75" y="8.75" width="238.5" height="238.5" rx="61.25" stroke="#A6E2EE" stroke-opacity=".16" stroke-width="1.5"/>
+ <path d="M88 187C60 187 41 170 41 146C41 124 57 107 79 104C85 79 104 64 128 64C158 64 180 83 184 110C204 114 216 128 216 148C216 171 198 187 174 187H88Z" fill="url(#cloud)"/>
+ <path d="M85 129L102 145L85 161" stroke="#102D3D" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+ <path d="M124 160H151C161 160 168 153 168 143" stroke="#102D3D" stroke-width="11" stroke-linecap="round"/>
+ <circle cx="190" cy="78" r="18" fill="#102332"/>
+ <circle cx="190" cy="78" r="11" fill="url(#spark)"/>
+</svg>

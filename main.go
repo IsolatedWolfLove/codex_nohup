@@ -16,19 +16,24 @@ var assets embed.FS
 //go:embed resources/agent/nohop-agent-windows-amd64.exe
 var windowsAgent []byte
 
+//go:embed resources/appicon-256.png
+var appIcon []byte
+
 func main() {
 	backend := newApp()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	backend.startup(ctx)
 	app := application.New(application.Options{
+		Icon:     appIcon,
 		Name:     "Nohop Codex",
 		Services: []application.Service{application.NewService(backend)},
 		Assets:   application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
 	})
 	app.OnShutdown(func() { cancel(); backend.shutdown(ctx) })
 	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name: "workspace", Title: "Nohop Codex", Width: 1180, Height: 760,
+		Linux: application.LinuxWindow{Icon: appIcon},
+		Name:  "workspace", Title: "Nohop Codex", Width: 1180, Height: 760,
 		MinWidth: 820, MinHeight: 560, Frameless: true,
 		BackgroundColour: application.NewRGB(11, 15, 20), URL: "/",
 	})

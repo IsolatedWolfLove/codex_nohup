@@ -45,7 +45,8 @@ func (a *App) DetachTerminal(payload string) error {
 		c.SuspendTerminalView(id)
 	}
 	w := application.Get().Window.NewWithOptions(application.WebviewWindowOptions{
-		Name: "terminal-" + tab.Key, Title: tab.Name + " · Nohop Codex",
+		Linux: application.LinuxWindow{Icon: appIcon},
+		Name:  "terminal-" + tab.Key, Title: tab.Name + " · Nohop Codex",
 		Width: 960, Height: 640, MinWidth: 420, MinHeight: 280, Frameless: true,
 		BackgroundColour: application.NewRGB(11, 15, 20), URL: "/?terminal=" + url.QueryEscape(payload),
 	})
