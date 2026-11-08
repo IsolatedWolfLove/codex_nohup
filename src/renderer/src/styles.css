@@ -322,3 +322,6 @@ input:focus, select:focus { border-color: #b9c5ff; box-shadow: 0 0 0 3px #b9c5ff
 
 .terminal-tab { grid-template-columns: minmax(80px, 1fr) repeat(3, 28px); }
 .android .terminal-tab { grid-template-columns: minmax(80px, 1fr) repeat(2, 28px); }
+
+.terminal-tab .tab-select { touch-action: none; user-select: none; cursor: grab; }
+.terminal-tab .tab-select:active { cursor: grabbing; }
