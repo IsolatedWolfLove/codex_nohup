@@ -616,7 +616,7 @@ func (c *Client) OpenSession(input CreateSessionInput) (TerminalOpened, error) {
 		return TerminalOpened{}, err
 	}
 	id := hex.EncodeToString(random[:])
-	t := &terminal{id: id, name: name, session: session, stdin: stdin, emit: c.emit}
+	t := &terminal{id: id, name: name, session: session, stdin: stdin, emit: c.emit, retainHistory: true}
 	session.Stdout = t
 	session.Stderr = t
 	started := make(chan error, 1)
@@ -754,4 +754,14 @@ func (c *Client) KillSession(name string) error {
 	}
 	_, err = checked(execConnectionCommand(conn, cmd))
 	return err
+}
+
+// SuspendTerminalView buffers output during a handoff between native windows.
+// It leaves the PTY, process and SSH attachment running.
+func (c *Client) SuspendTerminalView(id string) {
+	if t := c.getTerminal(id); t != nil {
+		t.mu.Lock()
+		t.ready = false
+		t.mu.Unlock()
+	}
 }

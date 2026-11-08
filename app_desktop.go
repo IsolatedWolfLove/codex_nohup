@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 func (a *App) downloadRoot() (string, error) {
@@ -29,28 +29,42 @@ func (a *App) exportDownload(ctx context.Context, staged string, progress func(i
 	return destination, nil
 }
 
-func (a *App) emit(name string, data any) { runtime.EventsEmit(a.ctx, name, data) }
-func (a *App) openURL(url string)         { runtime.BrowserOpenURL(a.ctx, url) }
+func (a *App) emit(name string, data any) { application.Get().Event.Emit(name, data) }
+func (a *App) openURL(url string)         { application.Get().Browser.OpenURL(url) }
 
 func (a *App) ChoosePrivateKey() (string, error) {
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择 SSH 私钥"})
+	return application.Get().Dialog.OpenFile().SetTitle("选择 SSH 私钥").PromptForSingleSelection()
 }
 func (a *App) ClipboardGetText() (string, error) {
-	return runtime.ClipboardGetText(a.ctx)
+	text, _ := application.Get().Clipboard.Text()
+	return text, nil
 }
 func (a *App) ClipboardSetText(value string) error {
-	return runtime.ClipboardSetText(a.ctx, value)
+	if !application.Get().Clipboard.SetText(value) {
+		return fmt.Errorf("无法写入剪贴板")
+	}
+	return nil
 }
 func (a *App) ConfirmKill(name string) (bool, error) {
-	choice, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{Type: runtime.QuestionDialog, Title: "结束远端会话", Message: fmt.Sprintf("结束远端会话“%s”？其中运行的进程也会结束。", name), Buttons: []string{"结束会话", "取消"}, DefaultButton: "取消", CancelButton: "取消"})
-	// Linux uses native Yes/No buttons and ignores custom button labels.
-	return choice == "结束会话" || choice == "Yes", err
+	result := make(chan bool, 1)
+	dialog := application.Get().Dialog.Question().SetTitle("结束远端会话").SetMessage(fmt.Sprintf("结束远端会话“%s”？其中运行的进程也会结束。", name))
+	dialog.AddButton("取消").SetAsDefault().SetAsCancel().OnClick(func() { result <- false })
+	dialog.AddButton("结束会话").OnClick(func() { result <- true })
+	dialog.Show()
+	select {
+	case confirmed := <-result:
+		return confirmed, nil
+	case <-a.ctx.Done():
+		return false, a.ctx.Err()
+	}
 }
 
 func (a *App) chooseDownloadPath(name string) (string, error) {
-	return runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: "下载远端文件", DefaultFilename: name})
+	dialog := application.Get().Dialog.SaveFile()
+	dialog.SetOptions(&application.SaveFileDialogOptions{Title: "下载远端文件"})
+	return dialog.SetFilename(name).PromptForSingleSelection()
 }
 
 func (a *App) chooseUploadFile() (string, error) {
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择要上传的文件"})
+	return application.Get().Dialog.OpenFile().SetTitle("选择要上传的文件").PromptForSingleSelection()
 }

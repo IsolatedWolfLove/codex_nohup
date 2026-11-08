@@ -1,6 +1,6 @@
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { run, wails } from './wails.mjs';
+import { run } from './wails.mjs';
 
 const target = process.argv[2] ?? (process.platform === 'win32' ? 'windows' : process.platform);
 if (!['linux', 'windows'].includes(target)) throw new Error('发行构建目前支持 linux 和 windows');
@@ -11,7 +11,9 @@ config.info.productVersion = pkg.version.split('-')[0];
 await writeFile('wails.json', `${JSON.stringify(config, null, 2)}\n`);
 run(process.execPath, ['scripts/build-agent.mjs', 'windows', 'amd64']);
 run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { shell: process.platform === 'win32' });
-wails(['build', '-clean', '-s', '-trimpath', '-ldflags', '-s -w', ...(target === 'linux' ? ['-tags', 'webkit2_41'] : ['-nsis'])]);
+await mkdir('build/bin', { recursive: true });
+run('go', ['build', '-trimpath', '-tags', target === 'linux' ? 'production,gtk3,purego' : 'production', '-ldflags', target === 'windows' ? '-s -w -H windowsgui' : '-s -w', '-o', target === 'windows' ? 'build/bin/nohop-codex.exe' : 'build/bin/nohop-codex', '.']);
+if (target === 'windows') run('makensis', [`/DPRODUCT_VERSION=${pkg.version}`, 'scripts/windows-installer.nsi']);
 await mkdir('release', { recursive: true });
 if (target === 'windows') {
   await cp('build/bin/nohop-codex.exe', `release/nohop-codex-${pkg.version}-windows-amd64.exe`);

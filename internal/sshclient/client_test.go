@@ -370,3 +370,29 @@ func TestNativeConsoleReattachHistory(t *testing.T) {
 		t.Fatal("history lost", string(data), err)
 	}
 }
+
+func TestWindowHandoffReplaysHistoryAndBufferedOutput(t *testing.T) {
+	var events []TerminalEvent
+	term := &terminal{id: "view", retainHistory: true, emit: func(e TerminalEvent) { events = append(events, e) }}
+	client := &Client{terminals: map[string]*terminal{"view": term}}
+	term.Write([]byte("before"))
+	term.markReady()
+	events = nil
+	client.SuspendTerminalView("view")
+	term.Write([]byte("-during"))
+	if len(events) != 0 {
+		t.Fatal("handoff output must be buffered")
+	}
+	term.markReady()
+	if len(events) != 1 {
+		t.Fatalf("expected one replay, got %d", len(events))
+	}
+	data, err := base64.StdEncoding.DecodeString(events[0].Data)
+	if err != nil || string(data) != "before-during" {
+		t.Fatalf("bad replay %q: %v", data, err)
+	}
+	term.Write([]byte("-after"))
+	if len(events) != 2 {
+		t.Fatal("live output did not resume")
+	}
+}

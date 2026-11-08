@@ -3,10 +3,10 @@
 package main
 
 import (
+	"context"
 	"embed"
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 	"log"
 )
 
@@ -17,14 +17,23 @@ var assets embed.FS
 var windowsAgent []byte
 
 func main() {
-	app := newApp()
-	err := wails.Run(&options.App{
-		Title: "Nohop Codex", Width: 1180, Height: 760, MinWidth: 820, MinHeight: 560,
-		BackgroundColour: &options.RGBA{R: 11, G: 15, B: 20, A: 255},
-		AssetServer:      &assetserver.Options{Assets: assets},
-		OnStartup:        app.startup, OnShutdown: app.shutdown, Bind: []interface{}{app},
+	backend := newApp()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	backend.startup(ctx)
+	app := application.New(application.Options{
+		Name:     "Nohop Codex",
+		Services: []application.Service{application.NewService(backend)},
+		Assets:   application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
 	})
-	if err != nil {
+	app.OnShutdown(func() { cancel(); backend.shutdown(ctx) })
+	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name: "workspace", Title: "Nohop Codex", Width: 1180, Height: 760,
+		MinWidth: 820, MinHeight: 560, Frameless: true,
+		BackgroundColour: application.NewRGB(11, 15, 20), URL: "/",
+	})
+	mainWindow.OnWindowEvent(events.Common.WindowClosing, func(_ *application.WindowEvent) { app.Quit() })
+	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
 }

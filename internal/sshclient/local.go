@@ -113,7 +113,7 @@ func (c *Client) openLocalSession(conn *connection, input CreateSessionInput) (T
 		return TerminalOpened{}, err
 	}
 	id := uuid.NewString()
-	t := &terminal{id: id, name: name, session: process, stdin: process, emit: c.emit, retainHistory: conn.info.Backend == "local"}
+	t := &terminal{id: id, name: name, session: process, stdin: process, emit: c.emit, retainHistory: true}
 	c.mu.Lock()
 	c.terminals[id] = t
 	c.mu.Unlock()

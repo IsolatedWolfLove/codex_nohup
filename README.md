@@ -1,6 +1,6 @@
 # Nohop Codex
 
-基于 **Wails v2 + Go + React/xterm.js** 的轻量 SSH 桌面终端。应用使用系统 WebView，不再携带 Electron/Chromium。
+基于 **Wails 3.1.0 + Go + React/xterm.js** 的轻量 SSH 桌面终端。应用使用系统 WebView，不再携带 Electron/Chromium。
 
 - Linux 远端优先使用 `tmux`，没有时回退到 `screen`。
 - Windows 远端通过内嵌的 Go ConPTY 代理保持 PowerShell 会话。
@@ -214,7 +214,7 @@ Linux 远端安装 `tmux`（推荐）或 `screen`。Windows 远端需要 Windows
 
 ### Android 客户端（实验版）
 
-Android 版用于从手机 SSH 连接 Linux / Windows 服务器，复用桌面版的远端持久会话。桌面继续使用 Wails v2；Android 使用固定版本的 Wails v3 Android 宿主，无需额外部署中转服务。
+Android 版用于从手机 SSH 连接 Linux / Windows 服务器，复用桌面版的远端持久会话。桌面和 Android 统一使用固定版本的 Wails 3.1.0 宿主，无需额外部署中转服务。
 
 - 支持 Android 8.0+ 的 ARM64 手机；提供窄屏侧栏、触摸历史滚动和可自定义的终端快捷栏。点击快捷栏「设置」可添加、编辑、排序、删除按键、Ctrl / Alt / Shift 组合键及常用文本；文本可选是否附加回车。设置保存在当前设备，可恢复默认，最多 40 个按钮。内置复制与粘贴入口始终保留。
 - 私钥通过系统文件选择器导入应用私有目录；SSH config 和 known_hosts 也存储在应用沙箱内，不读取其他 App 的配置。
@@ -255,3 +255,10 @@ git push origin v2.8.1
 发布构建会从 tag 自动设置 `package.json`、锁文件和 Wails 产品版本。构建完成后，可在 [GitHub Releases](https://github.com/IsolatedWolfLove/codex_nohup/releases) 下载对应版本的安装包。
 
 Wails 系统要求和构建说明：https://wails.io/docs/gettingstarted/installation/
+
+
+### 独立会话窗口
+
+桌面端可将标签拖离标签栏，或点击标签上的 ↗，打开真正的独立系统窗口，可移动到其他显示器。同一会话复用原来的终端连接；再次点击会话或标签会聚焦已打开的窗口。关闭独立窗口或点击“放回主窗口”会将终端视图还原到主窗口，不终止会话。关闭主窗口会退出整个应用。
+
+窗口采用深色自绘标题栏，保留拖动、双击最大化、最小化和关闭。桌面构建使用 Wails 3.1.0；Linux 使用 GTK3 / WebKitGTK 4.1 的 purego 构建路径。Windows 安装包需要 NSIS，运行环境需要 Microsoft Edge WebView2。

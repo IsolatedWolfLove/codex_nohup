@@ -307,3 +307,18 @@ input:focus, select:focus { border-color: #b9c5ff; box-shadow: 0 0 0 3px #b9c5ff
 .wallpaper-control output { min-width: 30px; font-variant-numeric: tabular-nums; }
 * { scrollbar-color: #8297bd88 #17243b55; }
 @media (max-width: 720px) { .terminal-stack { gap: 4px; padding: 4px; } .workspace { background-position: 70% center; } }
+
+.window-controls { height: 32px; display: flex; align-items: center; background: #151221; color: #a99bb9; --wails-draggable: drag; user-select: none; }
+.window-controls span { flex: 1; padding-left: 14px; font-size: 12px; }
+.window-controls button { --wails-draggable: no-drag; border: 0; background: transparent; color: inherit; width: 44px; height: 32px; }
+.window-controls button:hover { background: #493b59; }
+.custom-frame .workspace, .custom-frame .login-shell { height: calc(100vh - 32px); }
+.terminal-pane .pane-title button { margin-right: 12px; }
+
+.detached-terminal { height: calc(100vh - 32px); display: flex; flex-direction: column; background: #151221; padding: 0 8px 8px; }
+.detached-heading { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; color: #d9c9ec; }
+.detached-heading button { background: #302740; color: #e8dcf5; border: 1px solid #554465; border-radius: 6px; padding: 5px 10px; }
+.detached-terminal > .terminal-host { position: relative; inset: auto; flex: 1; min-height: 0; }
+
+.terminal-tab { grid-template-columns: minmax(80px, 1fr) repeat(3, 28px); }
+.android .terminal-tab { grid-template-columns: minmax(80px, 1fr) repeat(2, 28px); }

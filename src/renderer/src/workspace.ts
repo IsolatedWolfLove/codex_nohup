@@ -24,7 +24,12 @@ export function readWorkspace(raw: string | null): SavedWorkspace | null {
     if (!value || !Array.isArray(value.servers) || !Array.isArray(value.tabs)) return null;
     const servers = value.servers.filter((s: ConnectInput) => s && typeof s.connectionId === 'string' && /^[\w-]+$/.test(s.connectionId) && typeof s.host === 'string' && typeof s.username === 'string' && Number.isInteger(s.port) && s.port > 0 && s.port < 65536 && ['auto', 'password', 'privateKey', 'agent'].includes(s.authMethod)).map(safeConnection);
     const ids = new Set(servers.map((s: ConnectInput) => s.connectionId));
-    const tabs = value.tabs.filter((t: SavedTab) => t && typeof t.key === 'string' && ids.has(t.connectionId) && typeof t.name === 'string' && typeof t.cwd === 'string');
+    const seen = new Set<string>();
+    const tabs = value.tabs.filter((t: SavedTab) => t && typeof t.key === 'string' && ids.has(t.connectionId) && typeof t.name === 'string' && typeof t.cwd === 'string').filter((t: SavedTab) => {
+      const identity = JSON.stringify([t.connectionId, t.name]);
+      if (seen.has(identity)) return false;
+      seen.add(identity); return true;
+    });
     return { servers, tabs, selected: ids.has(value.selected) ? value.selected : servers[0]?.connectionId ?? null,
       active: tabs.some((t: SavedTab) => t.key === value.active) ? value.active : tabs[0]?.key ?? null,
       layout: ['single', 'columns', 'rows', 'grid'].includes(value.layout) ? value.layout : 'single' };

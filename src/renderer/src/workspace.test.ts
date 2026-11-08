@@ -40,3 +40,10 @@ it('restores a native local connection without turning it into SSH', () => {
   expect(saved?.servers[0].local).toBe(true);
   expect(saved?.tabs[0].connectionId).toBe(local.connectionId);
 });
+
+it('collapses duplicate restored session tabs but keeps different servers separate', () => {
+ const tab = { key: 'one', connectionId: 'server-a', name: 'work', cwd: '' };
+ const saved = readWorkspace(JSON.stringify({ servers: [input, { ...input, connectionId: 'server-b' }], tabs: [tab, { ...tab, key: 'duplicate' }, { ...tab, key: 'other', connectionId: 'server-b' }], active: 'duplicate' }));
+ expect(saved?.tabs.map(t => t.key)).toEqual(['one', 'other']);
+ expect(saved?.active).toBe('one');
+});
