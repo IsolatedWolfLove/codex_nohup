@@ -7,10 +7,11 @@ import { useEffect, useState } from 'react';
 import type { OpenTerminal } from './use-workspace';
 import { installNativeRuntime, closeNativeWindow } from './native-runtime';
 
-function Detached({ initial }: { initial: OpenTerminal }) {
+type DetachedTerminal = OpenTerminal & { predictionEnabled?: boolean };
+function Detached({ initial }: { initial: DetachedTerminal }) {
  const [item, setItem] = useState(initial);
  useEffect(() => window.runtime.EventsOn('terminal:updated', (payload: string) => { const next = JSON.parse(payload); if (next.key === initial.key) { if (next.closed) void closeNativeWindow(); else setItem(next); } }), [initial.key]);
- return <div className="detached-terminal"><div className="detached-heading"><strong>{item.name}</strong><button onClick={() => void closeNativeWindow()}>放回主窗口</button></div>{item.id ? <TerminalView item={item} active focused onFocus={() => {}} /> : <div className="terminal-empty">正在恢复连接…</div>}</div>;
+ return <div className="detached-terminal"><div className="detached-heading"><strong>{item.name}</strong><button onClick={() => void closeNativeWindow()}>放回主窗口</button></div>{item.id ? <TerminalView item={item} predictionEnabled={item.predictionEnabled === true} active focused onFocus={() => {}} /> : <div className="terminal-empty">正在恢复连接…</div>}</div>;
 }
 
 async function start() {
@@ -19,7 +20,7 @@ async function start() {
     installAndroidRuntime();
   } else { installNativeRuntime(); }
   const detachedPayload = new URLSearchParams(location.search).get('terminal');
-  const detached = detachedPayload ? JSON.parse(detachedPayload) as OpenTerminal : null;
+  const detached = detachedPayload ? JSON.parse(detachedPayload) as DetachedTerminal : null;
   const resize = () => document.documentElement.style.setProperty('--app-height', `${window.visualViewport?.height ?? window.innerHeight}px`);
   resize();
   window.visualViewport?.addEventListener('resize', resize);

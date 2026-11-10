@@ -1,0 +1,78 @@
+[
+  {
+    "name": "Codex",
+    "version": "0.167.0",
+    "initial": "\u001b[?1049l\u001b[2J\u001b[14;1H› \u001b[K",
+    "echoes": [
+      {
+        "input": "a",
+        "output": "\u001b[?2026h\u001b[?25l\u001b[14;4H\u001b[0m\u001b[K\u001b[16;50H\u001b[0m\u001b[K\u001b[14;3Ha\u001b[0m\u001b[14;4H\u001b[?25h\u001b[?2026l"
+      },
+      {
+        "input": "b",
+        "output": "\u001b[?2026h\u001b[?25l\u001b[14;4Hb\u001b[0m\u001b[14;5H\u001b[?25h\u001b[?2026l"
+      },
+      {
+        "input": "中文",
+        "output": "\u001b[?2026h\u001b[?25l\u001b[14;5H中\u001b[14;7H文\u001b[0m\u001b[14;9H\u001b[?25h\u001b[?2026l"
+      }
+    ]
+  },
+  {
+    "name": "Claude Code",
+    "version": "2.1.319",
+    "initial": "\u001b[?1049h\u001b[2J\u001b[22;1H❯ ",
+    "echoes": [
+      {
+        "input": "a",
+        "output": "\u001b[H\r\u001b[1B ▐█▟\u001b[7G█▟\r\u001b[1B▝▜\u001b[8G█▀\r\u001b[1C\u001b[1B▝▝\u001b[6G \u001b[8G▝\u001b[24;1H\u001b[22;3H\u001b[H\r\u001b[2C\u001b[1B▛█\u001b[7G▛█\u001b[24;1H\u001b[22;3H\u001b[H\r\u001b[2C\u001b[1B▂\u001b[7G▂\u001b[24;1H\u001b[22;3H\u001b[H\r\u001b[2C\u001b[1B▛\u001b[7G▛\u001b[24;1H\u001b[22;3H\u001b[H\r\u001b[60C\u001b[19B\u001b[K\u001b[24;1H\u001b[22;3H\u001b[H\r\u001b[39C\u001b[23B\u001b[K\u001b[24;1H\u001b[22;3H\u001b(B\u000f\u001b[?2004h\u001b[<u\u001b[>5u\u001b[>4;2m\u001b[?1000h\u001b[?1002h\u001b[?1003h\u001b[?1006h\u001b[H\r\u001b[2C\u001b[21Ba\u001b[7m \u001b[27m\u001b[24;1H\u001b[22;4H"
+      },
+      {
+        "input": "b",
+        "output": "\u001b(B\u000f\u001b[?2004h\u001b[<u\u001b[>5u\u001b[>4;2m\u001b[?1000h\u001b[?1002h\u001b[?1003h\u001b[?1006h\u001b[H\r\u001b[3C\u001b[21Bb\u001b[7m \u001b[27m\u001b[24;1H\u001b[22;5H"
+      },
+      {
+        "input": "中文",
+        "output": "\u001b[H\r\u001b[4C\u001b[21B中文\u001b[7m \u001b[27m\u001b[24;1H\u001b[22;9H"
+      }
+    ]
+  },
+  {
+    "name": "Bash",
+    "version": "5.2.21",
+    "initial": "\u001b[?1049l\u001b[2J\u001b[H$ ",
+    "echoes": [
+      {
+        "input": "a",
+        "output": "a"
+      },
+      {
+        "input": "b",
+        "output": "b"
+      },
+      {
+        "input": "中文",
+        "output": "中文"
+      }
+    ]
+  },
+  {
+    "name": "tmux + Bash",
+    "version": "3.4 / 5.2.21",
+    "initial": "\u001b[?1049h\u001b[2J\u001b[Hbash-5.2$ ",
+    "echoes": [
+      {
+        "input": "a",
+        "output": "\u001b[?7727h\u001b(B\u001b[m\u001b[?12l\u001b[?25h\u001b[?1006l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[1;1H\u001b[1;24r\u001b[1;11H\u001b[?25l\u001b[Hbash-5.2$ \u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\r\n\u001b[K\u001b[30m\u001b[42m\r\n[input-che0:bash*                                    \"linux-sgp\" 03:38 10-Nov-26\u001b(B\u001b[m\u001b[?12l\u001b[?25h\u001b[1;11H\u001b[?25l\u001b[30m\u001b[42m\u001b[24;1H[input-che0:bash*                                    \"linux-sgp\" 03:39 10-Nov-26\u001b(B\u001b[m\u001b[?12l\u001b[?25h\u001b[1;11Ha"
+      },
+      {
+        "input": "b",
+        "output": "b"
+      },
+      {
+        "input": "中文",
+        "output": "中文"
+      }
+    ]
+  }
+]
