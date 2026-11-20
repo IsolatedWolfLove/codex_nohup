@@ -11,14 +11,31 @@ export function bindTerminalScrolling(
   let disposed = false;
   let running = false;
   let polling = false;
+  let remoteDirty = false;
   let pendingLines = 0;
   let pendingPosition: number | null = null;
   let remainder = 0;
+  let lastRemote: TerminalScrollState = { lines: 0, position: 0, rows: instance.rows };
   const remote = () => backend === 'tmux' && instance.buffer.active.type === 'alternate';
   // Read on each event: full-screen applications enable/disable this at runtime.
   const applicationMouse = () => ['vt200', 'drag', 'any'].includes(instance.modes.mouseTrackingMode);
+  const applyRemote = (state: TerminalScrollState) => {
+    lastRemote = state;
+    update(state);
+  };
+  const optimisticRemote = (value: number, relative: boolean) => {
+    if (lastRemote.lines <= 0) return;
+    const next = Math.max(0, Math.min(lastRemote.lines, relative ? lastRemote.position + value : value));
+    if (next !== lastRemote.position) {
+      lastRemote = { ...lastRemote, position: next };
+      update(lastRemote);
+    }
+  };
   const localState = () => {
-    if (!disposed && !remote()) update({ lines: instance.buffer.active.baseY, position: instance.buffer.active.viewportY, rows: instance.rows });
+    if (!disposed) {
+      if (remote()) { remoteDirty = true; return; }
+      update({ lines: instance.buffer.active.baseY, position: instance.buffer.active.viewportY, rows: instance.rows });
+    }
   };
   const pump = async () => {
     if (running || polling || disposed) return;
@@ -32,20 +49,22 @@ export function bindTerminalScrolling(
         const value = relative ? pendingLines : pendingPosition!;
         if (relative) pendingLines = 0; else pendingPosition = null;
         const state = await api.scrollTerminal(id, value, relative);
-        if (!disposed) update(state);
+        if (!disposed) { remoteDirty = false; applyRemote(state); }
       }
     } catch (error) {
       pendingPosition = null; pendingLines = 0;
       if (!disposed) fail(error);
     } finally { running = false; }
   };
-  const poll = async () => {
+  const poll = async (force = false) => {
     if (disposed || !isActive() || running || polling) return;
     if (!remote()) { localState(); return; }
+    if (!force && !remoteDirty) return;
     polling = true;
+    remoteDirty = false;
     try {
       const state = await api.getTerminalScrollState(id);
-      if (!disposed) update(state);
+      if (!disposed) applyRemote(state);
     } catch { /* A disconnected terminal stops exposing remote history. */ }
     finally { polling = false; void pump(); }
   };
@@ -67,7 +86,7 @@ export function bindTerminalScrolling(
     const lines = Math.trunc(remainder);
     remainder -= lines;
     if (!lines) return;
-    if (remote()) { pendingLines += lines; void pump(); }
+    if (remote()) { pendingLines += lines; optimisticRemote(lines, true); void pump(); }
     else { instance.scrollLines(lines); localState(); }
   };
   let touchY: number | null = null;
@@ -86,7 +105,7 @@ export function bindTerminalScrolling(
     const lines = Math.trunc(touchRemainder);
     touchRemainder -= lines;
     if (!lines) return;
-    if (remote()) { pendingLines += lines; void pump(); }
+    if (remote()) { pendingLines += lines; optimisticRemote(lines, true); void pump(); }
     else { instance.scrollLines(lines); localState(); }
   };
   const touchEnd = () => { touchY = null; };
@@ -98,11 +117,11 @@ export function bindTerminalScrolling(
   const scroll = instance.onScroll(localState);
   const parsed = instance.onWriteParsed(localState);
   const resize = instance.onResize(localState);
-  const timer = window.setInterval(() => void poll(), 1000);
-  localState(); void poll();
+  const timer = window.setInterval(() => void poll(), 3000);
+  localState(); void poll(true);
   return {
     setPosition(position: number) {
-      if (remote()) { pendingPosition = position; pendingLines = 0; void pump(); }
+      if (remote()) { pendingPosition = position; pendingLines = 0; optimisticRemote(position, false); void pump(); }
       else { instance.scrollToLine(position); localState(); }
     },
     dispose() {

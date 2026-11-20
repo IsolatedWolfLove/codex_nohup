@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -98,7 +99,7 @@ func send(req request) (net.Conn, error) {
 		return nil, err
 	}
 	req.Token = token
-	conn, err := net.DialTimeout("tcp", agentAddress(), 2*time.Second)
+	conn, err := net.DialTimeout("tcp", agentAddress(), 300*time.Millisecond)
 	if err != nil {
 		return nil, err
 	}
@@ -220,13 +221,31 @@ func valid(value, fallback int) int {
 	return value
 }
 
+func resolveWorkDir(cwd string) string {
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" {
+		return ""
+	}
+	if cwd == "~" || strings.HasPrefix(cwd, "~/") || strings.HasPrefix(cwd, "~\\") {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return ""
+		}
+		if cwd == "~" {
+			return home
+		}
+		return filepath.Join(home, cwd[2:])
+	}
+	return cwd
+}
+
 func (d *daemon) attach(conn net.Conn, reader *bufio.Reader, req request) {
 	d.mu.Lock()
 	item := d.sessions[req.Name]
 	if item == nil {
 		options := []conpty.ConPtyOption{conpty.ConPtyDimensions(valid(req.Cols, 120), valid(req.Rows, 32))}
-		if req.Cwd != "" {
-			options = append(options, conpty.ConPtyWorkDir(req.Cwd))
+		if cwd := resolveWorkDir(req.Cwd); cwd != "" {
+			options = append(options, conpty.ConPtyWorkDir(cwd))
 		}
 		pty, err := conpty.Start("powershell.exe -NoLogo", options...)
 		if err != nil {
@@ -340,15 +359,30 @@ func main() {
 		}
 		return
 	}
-	if err := ensureDaemon(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
 	if op == "ensure" {
+		if err := ensureDaemon(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		return
 	}
-	req := request{Op: op, Name: argValue(os.Args[2:], "--name", ""), Cwd: argValue(os.Args[2:], "--cwd", ""), Cols: intArg(os.Args[2:], "--cols", 120), Rows: intArg(os.Args[2:], "--rows", 32)}
+	cwd := argValue(os.Args[2:], "--cwd", "")
+	if cwd == "" {
+		if encoded := argValue(os.Args[2:], "--cwd-b64", ""); encoded != "" {
+			if decoded, err := base64.StdEncoding.DecodeString(encoded); err == nil {
+				cwd = string(decoded)
+			}
+		}
+	}
+	req := request{Op: op, Name: argValue(os.Args[2:], "--name", ""), Cwd: cwd, Cols: intArg(os.Args[2:], "--cols", 120), Rows: intArg(os.Args[2:], "--rows", 32)}
 	conn, err := send(req)
+	if err != nil {
+		if ensureErr := ensureDaemon(); ensureErr != nil {
+			fmt.Fprintln(os.Stderr, ensureErr)
+			os.Exit(1)
+		}
+		conn, err = send(req)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

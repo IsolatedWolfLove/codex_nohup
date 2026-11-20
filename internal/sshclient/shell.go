@@ -34,7 +34,10 @@ func psCommand(s string) string {
 	return "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + base64.StdEncoding.EncodeToString(b)
 }
 
-const supportProbe = "if command -v tmux >/dev/null 2>&1; then echo tmux; elif command -v screen >/dev/null 2>&1; then echo screen; else echo none; fi"
+const (
+	windowsProbe = "cmd.exe /d /c echo nohop-windows"
+	supportProbe = "if command -v tmux >/dev/null 2>&1; then echo tmux; elif command -v screen >/dev/null 2>&1; then echo screen; else echo none; fi"
+)
 
 func parseBackend(s string) string {
 	f := strings.Fields(s)
@@ -77,14 +80,28 @@ func parseSessions(backend, output string) []PersistentSession {
 	}
 	return result
 }
+func posixShellDirExpr(cwd string) string {
+	if cwd == "" || cwd == "~" {
+		return ""
+	}
+	if strings.HasPrefix(cwd, "~/") {
+		return "\"$HOME/\"" + quoteSh(strings.TrimPrefix(cwd, "~/"))
+	}
+	if strings.HasPrefix(cwd, "/") {
+		return quoteSh(cwd)
+	}
+	return "\"$HOME/\"" + quoteSh(cwd)
+}
+
 func attachCommand(backend, name, cwd string) (string, error) {
 	name = normalizeName(name)
 	cwd = strings.TrimSpace(cwd)
+	dirExpr := posixShellDirExpr(cwd)
 	switch backend {
 	case "tmux":
 		dir := ""
-		if cwd != "" {
-			dir = " -c " + quoteSh(cwd)
+		if dirExpr != "" {
+			dir = " -c " + dirExpr
 		}
 		// Hide tmux's default green status bar for this session, including reattachments.
 		// Keep new-session attached so its initial size comes from the client PTY.
@@ -93,8 +110,8 @@ func attachCommand(backend, name, cwd string) (string, error) {
 		return "if tmux has-session -t " + target + " 2>/dev/null; then exec tmux -u " + status + " \\; attach-session -t " + target + "; else exec tmux -u new-session -s " + quoteSh(name) + dir + " \\; " + status + "; fi", nil
 	case "screen":
 		dir := ""
-		if cwd != "" {
-			dir = "cd " + quoteSh(cwd) + " && "
+		if dirExpr != "" {
+			dir = "cd " + dirExpr + " && "
 		}
 		return dir + "exec screen -xRR -S " + quoteSh(name), nil
 	}

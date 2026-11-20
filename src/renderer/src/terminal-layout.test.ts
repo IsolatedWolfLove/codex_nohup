@@ -63,4 +63,20 @@ describe('terminal layout synchronization', () => {
     await vi.waitFor(() => expect(f.ready).toHaveBeenCalledTimes(1));
     f.layout.dispose();
   });
+
+  it('skips initial resize when size already matches openSession dimensions', async () => {
+    let size: { cols: number; rows: number } | null = { cols: 100, rows: 30 };
+    const resize = vi.fn<(cols: number, rows: number) => Promise<void>>().mockResolvedValue();
+    const ready = vi.fn<() => Promise<void>>().mockResolvedValue();
+    const refresh = vi.fn();
+    const fail = vi.fn();
+    const layout = bindTerminalLayout(() => size, resize, ready, refresh, fail, '100:30');
+    layout.fit();
+    await vi.waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+    expect(resize).not.toHaveBeenCalled();
+    size = { cols: 120, rows: 40 };
+    layout.fit();
+    await vi.waitFor(() => expect(resize).toHaveBeenCalledWith(120, 40));
+    layout.dispose();
+  });
 });

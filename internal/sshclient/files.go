@@ -40,13 +40,55 @@ func (c *Client) fileClient() (*sftp.Client, bool, error) {
 	return ftp, conn.info.Platform == "windows", err
 }
 
+func (conn *connection) closeSFTP() {
+	conn.sftpMu.Lock()
+	ftp := conn.sftp
+	conn.sftp = nil
+	conn.sftpMu.Unlock()
+	if ftp != nil {
+		_ = ftp.Close()
+	}
+}
+
+func (c *Client) cachedFileClient() (*connection, *sftp.Client, bool, error) {
+	conn, err := c.current()
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if conn.local {
+		return nil, nil, false, errors.New("SFTP 文件浏览需要选择 SSH 服务器")
+	}
+	conn.sftpMu.Lock()
+	defer conn.sftpMu.Unlock()
+	if conn.sftp == nil {
+		ftp, err := sftp.NewClient(conn.client)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		conn.sftp = ftp
+	}
+	return conn, conn.sftp, conn.info.Platform == "windows", nil
+}
+
+func (c *Client) resetCachedFileClient(conn *connection, failed *sftp.Client) {
+	conn.sftpMu.Lock()
+	if conn.sftp == failed {
+		conn.sftp = nil
+	} else {
+		failed = nil
+	}
+	conn.sftpMu.Unlock()
+	if failed != nil {
+		_ = failed.Close()
+	}
+}
+
 func (c *Client) ListFiles(dir string) (RemoteDirectory, error) {
 	result := RemoteDirectory{Entries: []RemoteFile{}}
-	ftp, windows, err := c.fileClient()
+	conn, ftp, windows, err := c.cachedFileClient()
 	if err != nil {
 		return result, err
 	}
-	defer ftp.Close()
 	if dir == "" {
 		dir = "."
 	}
@@ -55,8 +97,25 @@ func (c *Client) ListFiles(dir string) (RemoteDirectory, error) {
 	}
 	resolved, err := ftp.RealPath(dir)
 	if err != nil {
+		var statusErr *sftp.StatusError
+		if !errors.As(err, &statusErr) {
+			c.resetCachedFileClient(conn, ftp)
+			if conn, ftp, windows, retryErr := c.cachedFileClient(); retryErr == nil {
+				resolved, err = ftp.RealPath(dir)
+				if err == nil {
+					return c.readDirectory(ftp, resolved)
+				}
+				_ = windows
+				_ = conn
+			}
+		}
 		return result, fmt.Errorf("无法定位目录：%w", err)
 	}
+	return c.readDirectory(ftp, resolved)
+}
+
+func (c *Client) readDirectory(ftp *sftp.Client, resolved string) (RemoteDirectory, error) {
+	result := RemoteDirectory{Entries: []RemoteFile{}}
 	entries, err := ftp.ReadDir(resolved)
 	if err != nil {
 		return result, fmt.Errorf("无法读取目录：%w", err)

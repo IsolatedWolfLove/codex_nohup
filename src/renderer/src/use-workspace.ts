@@ -4,18 +4,18 @@ import type { ConnectInput, ConnectionInfo } from '../../shared/contracts';
 import { readWorkspace, reconnectDelay, safeConnection, workspaceKey, type Layout, type SavedTab } from './workspace';
 import { portForwardStore } from './port-forward-store';
 
-export interface OpenTerminal extends SavedTab { id: string; backend: string }
+export interface OpenTerminal extends SavedTab { id: string; backend: string; cols?: number; rows?: number }
 export interface ServerConnection { input: ConnectInput; info: ConnectionInfo | null; status: string }
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
 
-export function useWorkspace(report: (message: string) => void) {
+export function useWorkspace(report: (message: string) => void, estimateGrid?: () => { cols: number; rows: number } | undefined) {
   const [servers, setServers] = useState<ServerConnection[]>([]);
   const [terminals, setTerminals] = useState<OpenTerminal[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [layout, setLayout] = useState<Layout>('single');
   const [initialized, setInitialized] = useState(false);
-  const state = useRef({ servers, terminals }); state.current = { servers, terminals };
+  const state = useRef({ servers, terminals, activeId }); state.current = { servers, terminals, activeId };
   const jobs = useRef(new Map<string, { cancelled: boolean; timer?: ReturnType<typeof setTimeout> }>());
   const mounted = useRef(false);
 
@@ -36,20 +36,25 @@ export function useWorkspace(report: (message: string) => void) {
         const info = await desktop.connect(input);
         if (job.cancelled) return;
         if (!input.local) {
-          try { await portForwardStore.restore(id, () => job.cancelled); }
-          catch (error) { report(`端口转发恢复失败：${errorText(error)}`); }
+          void portForwardStore.restore(id, () => job.cancelled)
+            .catch(error => { if (!job.cancelled) report(`端口转发恢复失败：${errorText(error)}`); });
         }
-        if (job.cancelled) return;
         const sessions = await desktop.listSessions(id);
+        if (job.cancelled) return;
         const tabs = state.current.terminals.filter(t => t.connectionId === id);
-        for (const tab of tabs) {
-          if (job.cancelled) return;
+        const currentActive = state.current.activeId;
+        const prioritized = [...tabs].sort((a, b) => Number(b.key === currentActive) - Number(a.key === currentActive));
+        const grid = estimateGrid?.();
+        const openedTabs = await Promise.all(prioritized.map(async (tab) => {
           // A session ended remotely must not be recreated by recovery.
           const session = sessions.find(s => s.name === tab.name) ?? sessions.find(s => s.backend === 'screen' && s.name.endsWith('.' + tab.name));
-          if (!session) continue;
-          const opened = await desktop.openSession({ connectionId: id, name: session.name });
-          if (job.cancelled) { void desktop.closeTerminal(opened.terminalId); return; }
-          reopened.push({ ...tab, name: opened.sessionName, id: opened.terminalId, backend: opened.backend });
+          if (!session) return null;
+          const opened = await desktop.openSession({ connectionId: id, name: session.name, cols: grid?.cols, rows: grid?.rows });
+          if (job.cancelled) { void desktop.closeTerminal(opened.terminalId); return null; }
+          return { ...tab, name: opened.sessionName, id: opened.terminalId, backend: opened.backend, cols: grid?.cols, rows: grid?.rows };
+        }));
+        for (const item of openedTabs) {
+          if (item) reopened.push(item);
         }
         if (job.cancelled) return;
         setTerminals(current => {
@@ -84,7 +89,7 @@ export function useWorkspace(report: (message: string) => void) {
     if (saved) {
       const restoredServers = saved.servers.map(input => ({ input, info: null, status: '等待恢复…' }));
       const restoredTabs = saved.tabs.map(tab => ({ ...tab, id: '', backend: 'none' }));
-      state.current = { servers: restoredServers, terminals: restoredTabs };
+      state.current = { servers: restoredServers, terminals: restoredTabs, activeId: saved.active };
       setServers(restoredServers); setTerminals(restoredTabs);
       setSelected(saved.selected); setActiveId(saved.active); setLayout(saved.layout);
       // Defer until credential listeners are installed, including StrictMode's second mount.

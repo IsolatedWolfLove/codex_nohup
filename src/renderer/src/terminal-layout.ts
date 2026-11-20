@@ -5,11 +5,12 @@ export function bindTerminalLayout(
   ready: () => Promise<void>,
   refresh: () => void,
   fail: (error: unknown) => void,
+  initialSynced = '',
 ) {
   let disposed = false;
   let running = false;
   let pending: { cols: number; rows: number } | null = null;
-  let synced = '';
+  let synced = initialSynced;
   let started = false;
   const pump = async () => {
     if (running || disposed) return;

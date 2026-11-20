@@ -270,7 +270,7 @@ aside header div { display: grid; gap: 3px; min-width: 0; } aside header strong 
 @media (max-width: 720px) { .files-actions { flex-direction: column; } .files-actions button { padding: 8px; } }
 
 /* Anime glass: a shared wallpaper remains visible behind transparent xterm surfaces. */
-:root { --sakura: #f2b8d7; --lavender: #b9c5ff; --moon: #f1f3ff; --wallpaper: url('./assets/anime-evening.png'); }
+:root { --sakura: #f2b8d7; --lavender: #b9c5ff; --moon: #f1f3ff; --wallpaper: url('./assets/anime-evening.webp'); }
 .login-shell, .workspace { background: linear-gradient(90deg, #111a344d, #111a3410), var(--wallpaper) center / cover; }
 .brand-panel h1 { color: var(--moon); text-shadow: 0 4px 36px #111a34; letter-spacing: -.04em; }
 .brand-panel > p, .feature { color: #e1e7fb; text-shadow: 0 1px 5px #111a34; }
@@ -286,7 +286,12 @@ input:focus, select:focus { border-color: #b9c5ff; box-shadow: 0 0 0 3px #b9c5ff
 .terminal-area { background: transparent; }
 .terminal-area nav { background: #141e36a3; border-color: #d2dfff26; }
 .terminal-stack { background: transparent; gap: 8px; padding: 8px; }
-.terminal-host { background: rgb(12 20 39 / var(--terminal-shade, .45)); }
+.terminal-host { background: rgb(12 20 39 / var(--terminal-shade, .45)); contain: layout style paint; }
+.low-latency .login-shell, .low-latency .workspace { background: #151221; }
+.low-latency .connect-card, .low-latency aside { backdrop-filter: none; background: #181c2e; }
+.low-latency .terminal-host { background: #151221; }
+.low-latency .terminal-pane.focused { box-shadow: none; }
+.low-latency .wallpaper-control { opacity: .45; }
 .terminal-host .xterm, .terminal-host .xterm-viewport { background-color: transparent !important; }
 .terminal-pane { border-radius: 12px; overflow: hidden; border-color: #c5d5ff30; }
 .terminal-pane.focused { border-color: #c5d5ff80; box-shadow: 0 8px 32px #0c142726; }
@@ -330,3 +335,30 @@ input:focus, select:focus { border-color: #b9c5ff; box-shadow: 0 0 0 3px #b9c5ff
 .tab-context-menu button { width: 100%; padding: 10px; border: 0; border-radius: 6px; background: transparent; color: #eee6fa; text-align: left; cursor: pointer; font-size: 13px; }
 .tab-context-menu button:hover, .tab-context-menu button:focus-visible { background: #493b59; outline: none; }
 .tab-context-menu button:disabled { opacity: .45; cursor: not-allowed; }
+
+.connect-actions { display: flex; align-items: center; gap: 6px; }
+.key-store-button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid #554465; border-radius: 8px; background: #302740; color: #eee6fa; font-size: 12px; cursor: pointer; }
+.key-store-button:hover { border-color: #c4a7e7; background: #3b2f4d; }
+.key-manager-modal { width: min(620px, 94vw); max-height: min(88vh, calc(var(--app-height, 100dvh) - 24px)); overflow-y: auto; }
+.key-manager-modal div { margin-top: 0; justify-content: flex-start; }
+.key-manager-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.key-manager-header > div { display: block; }
+.key-manager-header h3 { margin: 0 0 4px; }
+.key-manager-header small { color: #b9abc9; font-size: 12px; }
+.key-list { display: grid; gap: 10px; margin: 14px 0; }
+.key-item { display: grid; gap: 8px; padding: 12px; border: 1px solid #493b59; border-radius: 10px; background: #181526; }
+.key-item-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.key-item-top > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.key-meta, .key-fingerprint { color: #a99bb9; font-size: 12px; overflow-wrap: anywhere; }
+.key-item-actions { display: flex; gap: 6px; align-items: center; }
+.key-item-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; font-size: 12px; }
+.key-item-actions button.danger { color: #ff9696; border-color: #784444; }
+.key-public-preview { font: 12px/1.4 'JetBrains Mono', 'Cascadia Code', monospace; padding: 7px 9px; color: #d5c7ea; background: #110f1b; border-color: #3b304c; }
+.key-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid #443653; }
+.key-section h4 { margin: 0 0 10px; font-size: 14px; color: #f5b4d5; }
+.key-section textarea { width: 100%; resize: vertical; color: #e8f0f5; background: #181526; border: 1px solid #493b59; border-radius: 9px; padding: 10px 12px; font: 12px/1.5 'JetBrains Mono', 'Cascadia Code', monospace; }
+.key-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.key-import-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.key-import-title h4 { margin: 0; }
+.key-import-title button { width: auto; border: 1px solid #554465; border-radius: 8px; padding: 6px 10px; background: #302740; font-size: 12px; cursor: pointer; }
+@media (max-width: 600px) { .key-form-row { grid-template-columns: 1fr; } }

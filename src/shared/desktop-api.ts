@@ -1,4 +1,4 @@
-import type { DownloadProgress, RemoteDirectory, PortForward, PortForwardInput, ConnectInput, ConnectionInfo, CreateSessionInput, CredentialRequest, PersistentSession, SSHHost, TerminalEvent, TerminalOpened, TerminalScrollState } from './contracts';
+import type { DownloadProgress, RemoteDirectory, PortForward, PortForwardInput, ConnectInput, ConnectionInfo, CreateSessionInput, CredentialRequest, PersistentSession, SSHHost, SSHKeyInfo, TerminalEvent, TerminalOpened, TerminalScrollState } from './contracts';
 import type { FilePreview } from './contracts';
 
 export interface DesktopApi {
@@ -34,6 +34,10 @@ export interface DesktopApi {
   getSSHConfig(): Promise<string>;
   saveSSHConfig(content: string): Promise<void>;
   listSSHHosts(): Promise<SSHHost[]>;
+  listSSHKeys(): Promise<SSHKeyInfo[]>;
+  generateSSHKey(name: string, passphrase: string, comment: string): Promise<SSHKeyInfo>;
+  importSSHKey(name: string, content: string, passphrase: string): Promise<SSHKeyInfo>;
+  deleteSSHKey(name: string): Promise<void>;
   submitCredential(id: string, value: string, cancelled: boolean): Promise<void>;
   onCredentialRequest(callback: (request: CredentialRequest) => void): () => void;
   onAuthUrl(callback: (url: string) => void): () => void;

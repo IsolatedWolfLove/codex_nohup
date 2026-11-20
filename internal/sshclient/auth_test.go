@@ -142,3 +142,17 @@ func TestAutoAuthPasswordFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAppendExtraStoredKeysSkipsConfigAndPubs(t *testing.T) {
+	home := authTestHome(t)
+	sshDir := filepath.Join(home, ".ssh")
+	_ = os.WriteFile(filepath.Join(sshDir, "config"), []byte("Host test\n"), 0600)
+	_ = os.WriteFile(filepath.Join(sshDir, "known_hosts"), []byte("127.0.0.1 ssh-ed25519 AAAA\n"), 0600)
+	_ = os.WriteFile(filepath.Join(sshDir, "custom.pub"), []byte("ssh-ed25519 AAAA\n"), 0644)
+	custom := filepath.Join(sshDir, "custom")
+	writeAuthKey(t, custom, "")
+	got := appendExtraStoredKeys(nil, sshDir, 4)
+	if len(got) != 1 || got[0] != custom {
+		t.Fatalf("expected only custom private key, got %v", got)
+	}
+}

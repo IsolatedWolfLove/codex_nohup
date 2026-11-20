@@ -17,6 +17,15 @@ export interface ConnectInput {
   proxyJumpKey?: string;
 }
 export interface SSHHost { alias: string; host: string; user?: string; port: number; identity?: string }
+export interface SSHKeyInfo {
+  name: string;
+  path: string;
+  publicKey: string;
+  fingerprint: string;
+  algorithm: string;
+  encrypted: boolean;
+  isDefault: boolean;
+}
 export interface CredentialRequest { id: string; kind: string; prompt: string; secret: boolean }
 
 export type RemotePlatform = 'linux' | 'windows';

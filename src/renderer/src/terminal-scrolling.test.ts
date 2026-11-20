@@ -105,4 +105,25 @@ describe('terminal scrolling', () => {
       await vi.waitFor(() => expect(f.api.scrollTerminal).toHaveBeenLastCalledWith('id', -5, true));
     } finally { f.scroller.dispose(); }
   });
+  it('optimistically updates remote scrollbar position before RPC resolves', async () => {
+    vi.stubGlobal('window', globalThis);
+    const surface = Object.assign(new EventTarget(), { clientHeight: 240, querySelector: () => ({ getBoundingClientRect: () => ({ height: 240 }) }) });
+    const instance = { modes: { mouseTrackingMode: 'none' }, rows: 24, buffer: { active: { type: 'alternate', baseY: 100, viewportY: 100 } },
+      scrollLines: vi.fn(), scrollToLine: vi.fn(), onScroll: () => ({ dispose() {} }),
+      onWriteParsed: () => ({ dispose() {} }), onResize: () => ({ dispose() {} }) };
+    let resolveScroll!: (state: { lines: number; position: number; rows: number }) => void;
+    const api = {
+      getTerminalScrollState: vi.fn().mockResolvedValue({ lines: 100, position: 100, rows: 24 }),
+      scrollTerminal: vi.fn().mockImplementationOnce(() => new Promise(done => { resolveScroll = done; })),
+    };
+    const update = vi.fn();
+    const scroller = bindTerminalScrolling(instance as unknown as Terminal, surface as unknown as HTMLElement, 'tmux', 'id', api, update, vi.fn(), () => true);
+    try {
+      await vi.waitFor(() => expect(update).toHaveBeenCalledWith({ lines: 100, position: 100, rows: 24 }));
+      surface.dispatchEvent(Object.assign(new Event('wheel', { cancelable: true }), { deltaY: -5, deltaMode: 1 }));
+      expect(update).toHaveBeenLastCalledWith({ lines: 100, position: 95, rows: 24 });
+      resolveScroll({ lines: 100, position: 95, rows: 24 });
+      await Promise.resolve();
+    } finally { scroller.dispose(); }
+  });
 });

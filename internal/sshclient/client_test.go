@@ -41,6 +41,63 @@ func TestShellCommands(t *testing.T) {
 	if _, err := attachCommand("none", "x", ""); err == nil {
 		t.Fatal("unsupported backend accepted")
 	}
+	tildeCmd, err := attachCommand("tmux", "work", "~")
+	if err != nil || strings.Contains(tildeCmd, " -c ") {
+		t.Fatal("tilde cwd should omit -c", tildeCmd, err)
+	}
+	subCmd, err := attachCommand("tmux", "work", "~/sub'dir")
+	if err != nil || !strings.Contains(subCmd, `-c "$HOME/"'sub'\''dir'`) {
+		t.Fatal("sub tilde cwd", subCmd, err)
+	}
+	if got := buildAgentCmd(`C:\Users\a b\nohop-agent.exe`, true, "list"); got != `"C:\Users\a b\nohop-agent.exe" list` {
+		t.Fatal("winCmd direct buildAgentCmd:", got)
+	}
+	if got := buildAgentCmd(`C:\Users\a\nohop-agent.exe`, false, "list"); !strings.HasPrefix(got, "powershell.exe ") {
+		t.Fatal("powershell fallback buildAgentCmd:", got)
+	}
+}
+
+func TestTerminalCoalescing(t *testing.T) {
+	var mu sync.Mutex
+	var events []TerminalEvent
+	term := &terminal{
+		id:       "c",
+		coalesce: 15 * time.Millisecond,
+		emit: func(e TerminalEvent) {
+			mu.Lock()
+			events = append(events, e)
+			mu.Unlock()
+		},
+	}
+	term.markReady()
+	// Idle write emits immediately without waiting for coalesce timer.
+	term.Write([]byte("a"))
+	mu.Lock()
+	countAfterFirst := len(events)
+	mu.Unlock()
+	if countAfterFirst != 1 {
+		t.Fatalf("expected immediate interactive emit, got %d", countAfterFirst)
+	}
+	// Rapid burst writes within coalesce window batch together and flush before exit.
+	term.Write([]byte("b"))
+	term.Write([]byte("c"))
+	term.Write([]byte("d"))
+	mu.Lock()
+	countDuringBurst := len(events)
+	mu.Unlock()
+	if countDuringBurst != 1 {
+		t.Fatalf("expected burst writes to coalesce, got %d events", countDuringBurst)
+	}
+	term.finish(nil)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(events) != 3 || events[1].Type != "data" || events[2].Type != "exit" {
+		t.Fatalf("expected coalesced data then exit, got %+v", events)
+	}
+	raw, _ := base64.StdEncoding.DecodeString(events[1].Data)
+	if string(raw) != "bcd" {
+		t.Fatalf("expected coalesced payload 'bcd', got %q", raw)
+	}
 }
 func TestTerminalReplay(t *testing.T) {
 	events := []TerminalEvent{}
@@ -198,7 +255,7 @@ func (f *fakeServer) handle(channel ssh.Channel, requests <-chan *ssh.Request) {
 					io.WriteString(channel.Stderr(), err.Error())
 				}
 				io.WriteString(channel, output)
-			case strings.HasPrefix(cmd, "powershell.exe"):
+			case strings.HasPrefix(cmd, "powershell.exe") || strings.HasPrefix(cmd, "cmd.exe"):
 				status = 127
 			case cmd == supportProbe:
 				io.WriteString(channel, "tmux\n")

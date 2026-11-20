@@ -27,7 +27,7 @@ func (t *terminal) leaveHistory(conn *connection) error {
 		return nil
 	}
 	target := quoteSh(t.scrollPane)
-	command := "if [ \"$(tmux display-message -p -t " + target + " '#{pane_in_mode}')\" = 1 ]; then tmux send-keys -X -t " + target + " cancel; fi"
+	command := "tmux send-keys -X -t " + target + " cancel 2>/dev/null || true"
 	if _, err := checked(execConnectionCommand(conn, command)); err != nil {
 		return err
 	}
@@ -54,17 +54,41 @@ func parsePaneScrollState(output string) (paneScrollState, error) {
 	return paneScrollState{TerminalScrollState: TerminalScrollState{Lines: values[0], Position: max(0, values[0]-values[1]), Rows: values[2]}, pane: fields[0], offset: values[1], mode: values[3] != 0}, nil
 }
 
+const paneScrollFormat = "#{pane_id}|#{history_size}|#{scroll_position}|#{pane_height}|#{pane_in_mode}"
+
 func readPaneScrollState(conn *connection, name string) (paneScrollState, error) {
-	result, err := checked(execConnectionCommand(conn, "tmux display-message -p -t "+quoteSh("="+name+":")+" "+quoteSh("#{pane_id}|#{history_size}|#{scroll_position}|#{pane_height}|#{pane_in_mode}")))
+	result, err := checked(execConnectionCommand(conn, "tmux display-message -p -t "+quoteSh("="+name+":")+" "+quoteSh(paneScrollFormat)))
 	if err != nil {
 		return paneScrollState{}, err
 	}
 	return parsePaneScrollState(result.stdout)
 }
 
+func buildScrollCommand(name string, value int, relative bool) string {
+	targetExpr := strconv.Itoa(max(0, value))
+	if relative {
+		targetExpr = fmt.Sprintf("$((cur + (%d)))", max(-500, min(500, value)))
+	}
+	sessionTarget := quoteSh("=" + name + ":")
+	format := quoteSh(paneScrollFormat)
+	return "s=$(tmux display-message -p -t " + sessionTarget + " " + format + ") || exit $?; " +
+		"IFS='|' read -r pane lines offset rows mode <<EOF\n$s\nEOF\n" +
+		"offset=${offset:-0}; cur=$((lines - offset)); [ \"$cur\" -lt 0 ] && cur=0; " +
+		"target=" + targetExpr + "; " +
+		"[ \"$target\" -lt 0 ] && target=0; [ \"$target\" -gt \"$lines\" ] && target=$lines; " +
+		"if [ \"$target\" -eq \"$cur\" ]; then printf '%s\\n' \"$s\"; " +
+		"elif [ \"$target\" -eq \"$lines\" ]; then " +
+		"if [ \"$mode\" = 1 ]; then tmux send-keys -X -t \"$pane\" cancel || exit $?; fi; " +
+		"tmux display-message -p -t \"$pane\" " + format + "; " +
+		"else " +
+		"if [ \"$mode\" != 1 ]; then tmux copy-mode -e -t \"$pane\" || exit $?; fi; " +
+		"diff=$((cur - target)); " +
+		"if [ \"$diff\" -gt 0 ]; then tmux send-keys -X -N \"$diff\" -t \"$pane\" scroll-up || exit $?; " +
+		"else diff=$((-diff)); tmux send-keys -X -N \"$diff\" -t \"$pane\" scroll-down || exit $?; fi; " +
+		"tmux display-message -p -t \"$pane\" " + format + "; fi"
+}
+
 func (c *Client) GetTerminalScrollState(id string) (TerminalScrollState, error) {
-	c.op.Lock()
-	defer c.op.Unlock()
 	t := c.getTerminal(id)
 	if t == nil {
 		return TerminalScrollState{}, errors.New("终端已关闭")
@@ -81,8 +105,6 @@ func (c *Client) GetTerminalScrollState(id string) (TerminalScrollState, error) 
 }
 
 func (c *Client) ScrollTerminal(id string, value int, relative bool) (TerminalScrollState, error) {
-	c.op.Lock()
-	defer c.op.Unlock()
 	t := c.getTerminal(id)
 	if t == nil {
 		return TerminalScrollState{}, errors.New("终端已关闭")
@@ -96,46 +118,18 @@ func (c *Client) ScrollTerminal(id string, value int, relative bool) (TerminalSc
 	if conn.info.Backend != "tmux" {
 		return TerminalScrollState{}, errors.New("当前后端没有远端滚动历史")
 	}
-	state, err := readPaneScrollState(conn, t.name)
+	result, err := checked(execConnectionCommand(conn, buildScrollCommand(t.name, value, relative)))
 	if err != nil {
 		return TerminalScrollState{}, err
 	}
-	position := value
-	if relative {
-		position = state.Position + max(-500, min(500, value))
+	updated, err := parsePaneScrollState(result.stdout)
+	if err != nil {
+		return TerminalScrollState{}, err
 	}
-	position = max(0, min(state.Lines, position))
-	if position == state.Position {
-		return state.TerminalScrollState, nil
-	}
-	target := quoteSh(state.pane)
-	command := ""
-	if position == state.Lines {
-		if state.mode {
-			command = "tmux send-keys -X -t " + target + " cancel"
-		}
-	} else {
-		if !state.mode {
-			command = "tmux copy-mode -e -t " + target + " && "
-		}
-		amount := state.Position - position
-		direction := "scroll-up"
-		if amount < 0 {
-			amount = -amount
-			direction = "scroll-down"
-		}
-		command += fmt.Sprintf("tmux send-keys -X -N %d -t %s %s", amount, target, direction)
-	}
-	if command != "" {
-		if _, err := checked(execConnectionCommand(conn, command)); err != nil {
-			return TerminalScrollState{}, err
-		}
-	}
-	if position < state.Lines {
-		t.scrollPane = state.pane
+	if updated.mode || updated.Position < updated.Lines {
+		t.scrollPane = updated.pane
 	} else {
 		t.scrollPane = ""
 	}
-	updated, err := readPaneScrollState(conn, t.name)
-	return updated.TerminalScrollState, err
+	return updated.TerminalScrollState, nil
 }

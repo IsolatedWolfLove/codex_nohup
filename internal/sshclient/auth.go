@@ -1,11 +1,13 @@
 package sshclient
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -34,13 +36,20 @@ func (c *Client) autoAuthMethods(input ConnectInput) ([]ssh.AuthMethod, []func()
 	}
 	if len(paths) == 0 {
 		if home, err := os.UserHomeDir(); err == nil {
+			sshDir := filepath.Join(home, ".ssh")
 			for _, name := range []string{"id_rsa", "id_ecdsa", "id_ed25519", "id_dsa"} {
-				paths = append(paths, filepath.Join(home, ".ssh", name))
+				paths = append(paths, filepath.Join(sshDir, name))
+			}
+			// Android stores app-managed keys inside its private sandbox ~/.ssh directory,
+			// so automatically try custom-named keys saved there when no -i path is given.
+			if runtime.GOOS == "android" {
+				paths = appendExtraStoredKeys(paths, sshDir, 4)
 			}
 		}
 	}
 	seen := map[string]bool{}
 	for _, path := range paths {
+		path = expandUserPath(path)
 		if strings.EqualFold(path, "none") || seen[path] {
 			continue
 		}
@@ -100,6 +109,43 @@ func (c *Client) autoAuthMethods(input ConnectInput) ([]ssh.AuthMethod, []func()
 		return c.credential("password", fmt.Sprintf("请输入 %s@%s 的密码", input.Username, input.Host), true)
 	}))
 	return auths, cleanups, nil
+}
+
+func expandUserPath(value string) string {
+	if strings.HasPrefix(value, "~/") || strings.HasPrefix(value, "~"+string(filepath.Separator)) {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			return filepath.Join(home, value[2:])
+		}
+	}
+	return value
+}
+
+func appendExtraStoredKeys(paths []string, sshDir string, limit int) []string {
+	entries, err := os.ReadDir(sshDir)
+	if err != nil {
+		return paths
+	}
+	added := 0
+	for _, entry := range entries {
+		if added >= limit || entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		lower := strings.ToLower(name)
+		if strings.HasSuffix(lower, ".pub") || lower == "config" || strings.HasPrefix(lower, "known_hosts") || lower == "authorized_keys" {
+			continue
+		}
+		full := filepath.Join(sshDir, name)
+		info, err := os.Stat(full)
+		if err != nil || info.IsDir() || info.Size() > 1024*1024 {
+			continue
+		}
+		if data, err := os.ReadFile(full); err == nil && bytes.Contains(data, []byte("PRIVATE KEY-----")) {
+			paths = append(paths, full)
+			added++
+		}
+	}
+	return paths
 }
 
 // Offer an encrypted key's public part first, prompting only if the server

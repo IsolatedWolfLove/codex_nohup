@@ -21,23 +21,53 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-const maxHistory = 2 * 1024 * 1024
+const (
+	maxHistory       = 2 * 1024 * 1024
+	emitCoalesceWait = 3 * time.Millisecond
+	emitBatchLimit   = 64 * 1024
+)
 
 type terminal struct {
-	mu            sync.Mutex
-	writeMu       sync.Mutex
-	scrollPane    string // Protected by writeMu; only modes entered by our scrollbar.
-	session       terminalSession
-	stdin         io.WriteCloser
-	name          string
-	ready         bool
-	ended         bool
-	closed        bool
-	retainHistory bool
-	buffer        []byte
-	exitError     string
-	emit          func(TerminalEvent)
-	id            string
+	mu             sync.Mutex
+	writeMu        sync.Mutex
+	scrollPane     string // Protected by writeMu; only modes entered by our scrollbar.
+	session        terminalSession
+	stdin          io.WriteCloser
+	name           string
+	ready          bool
+	ended          bool
+	closed         bool
+	retainHistory  bool
+	coalesce       time.Duration
+	pending        []byte
+	lastEmit       time.Time
+	flushScheduled bool
+	flushTimer     *time.Timer
+	buffer         []byte
+	exitError      string
+	emit           func(TerminalEvent)
+	id             string
+}
+
+func (t *terminal) flushLocked() {
+	if t.flushTimer != nil {
+		t.flushTimer.Stop()
+		t.flushTimer = nil
+	}
+	t.flushScheduled = false
+	if len(t.pending) == 0 || t.closed || !t.ready {
+		t.pending = nil
+		return
+	}
+	t.emit(TerminalEvent{Type: "data", TerminalID: t.id, Data: base64.StdEncoding.EncodeToString(t.pending)})
+	t.pending = nil
+	t.lastEmit = time.Now()
+}
+
+func (t *terminal) flushPending() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.flushLocked()
 }
 
 func (t *terminal) Write(p []byte) (int, error) {
@@ -46,14 +76,26 @@ func (t *terminal) Write(p []byte) (int, error) {
 	if t.closed {
 		return len(p), nil
 	}
-	if t.ready {
-		t.emit(TerminalEvent{Type: "data", TerminalID: t.id, Data: base64.StdEncoding.EncodeToString(p)})
-	}
 	if !t.ready || t.retainHistory {
 		t.buffer = append(t.buffer, p...)
 		if len(t.buffer) > maxHistory {
 			t.buffer = append([]byte(nil), t.buffer[len(t.buffer)-maxHistory:]...)
 		}
+	}
+	if !t.ready {
+		return len(p), nil
+	}
+	if t.coalesce <= 0 {
+		t.emit(TerminalEvent{Type: "data", TerminalID: t.id, Data: base64.StdEncoding.EncodeToString(p)})
+		return len(p), nil
+	}
+	wasEmpty := len(t.pending) == 0
+	t.pending = append(t.pending, p...)
+	if (wasEmpty && time.Since(t.lastEmit) >= t.coalesce) || len(t.pending) >= emitBatchLimit {
+		t.flushLocked()
+	} else if !t.flushScheduled {
+		t.flushScheduled = true
+		t.flushTimer = time.AfterFunc(t.coalesce, t.flushPending)
 	}
 	return len(p), nil
 }
@@ -69,6 +111,7 @@ func (t *terminal) finish(err error) {
 		t.exitError = err.Error()
 	}
 	if t.ready {
+		t.flushLocked()
 		t.emitEnd()
 	}
 }
@@ -84,6 +127,12 @@ func (t *terminal) markReady() {
 	if t.ready || t.closed {
 		return
 	}
+	if t.flushTimer != nil {
+		t.flushTimer.Stop()
+		t.flushTimer = nil
+	}
+	t.flushScheduled = false
+	t.pending = nil
 	// Replay and live data share this lock and the same event transport, preserving order.
 	if len(t.buffer) > 0 {
 		t.emit(TerminalEvent{Type: "data", TerminalID: t.id, Data: base64.StdEncoding.EncodeToString(t.buffer)})
@@ -100,6 +149,12 @@ func (t *terminal) close() {
 	t.mu.Lock()
 	t.closed = true
 	t.buffer = nil
+	t.pending = nil
+	t.flushScheduled = false
+	if t.flushTimer != nil {
+		t.flushTimer.Stop()
+		t.flushTimer = nil
+	}
 	t.mu.Unlock()
 	_ = t.session.Close()
 }
@@ -109,7 +164,11 @@ type connection struct {
 	client    *ssh.Client
 	proxy     *ssh.Client
 	info      ConnectionInfo
+	agentMu   sync.Mutex
 	agentPath string
+	winCmd    bool
+	sftpMu    sync.Mutex
+	sftp      *sftp.Client
 	done      chan struct{}
 }
 type Client struct {
@@ -166,7 +225,8 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 			}))
 		}
 	case "privateKey":
-		data, err := os.ReadFile(input.PrivateKeyPath)
+		keyPath := expandUserPath(input.PrivateKeyPath)
+		data, err := os.ReadFile(keyPath)
 		if err != nil {
 			return ConnectionInfo{}, err
 		}
@@ -177,7 +237,7 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 			signer, err = ssh.ParsePrivateKey(data)
 			var encrypted *ssh.PassphraseMissingError
 			if errors.As(err, &encrypted) {
-				pass, promptErr := c.credential("passphrase", "请输入私钥口令："+input.PrivateKeyPath, true)
+				pass, promptErr := c.credential("passphrase", "请输入私钥口令："+keyPath, true)
 				if promptErr != nil {
 					return ConnectionInfo{}, promptErr
 				}
@@ -280,20 +340,32 @@ func (c *Client) Connect(input ConnectInput) (ConnectionInfo, error) {
 			}
 		}
 	}()
-	probe, err := execCommand(client, `powershell.exe -NoLogo -NoProfile -NonInteractive -Command "[Console]::Out.Write('nohop-windows')"`)
-	if err != nil {
-		return ConnectionInfo{}, err
+	type probeOutcome struct {
+		res commandResult
+		err error
 	}
+	winCh := make(chan probeOutcome, 1)
+	linuxCh := make(chan probeOutcome, 1)
+	go func() {
+		res, err := execCommand(client, windowsProbe)
+		winCh <- probeOutcome{res, err}
+	}()
+	go func() {
+		res, err := execCommand(client, supportProbe)
+		linuxCh <- probeOutcome{res, err}
+	}()
+	linuxOut := <-linuxCh
+	winOut := <-winCh
 	info := ConnectionInfo{Platform: "linux", Host: input.Host, Backend: "none"}
-	if probe.code == 0 && strings.Contains(probe.stdout, "nohop-windows") {
+	if linuxOut.err == nil && linuxOut.res.code == 0 {
+		info.Backend = parseBackend(linuxOut.res.stdout)
+	} else if winOut.err == nil && winOut.res.code == 0 && strings.Contains(winOut.res.stdout, "nohop-windows") {
 		info.Platform = "windows"
 		info.Backend = "conpty"
-	} else {
-		result, err := execCommand(client, supportProbe)
-		if err != nil {
-			return ConnectionInfo{}, err
-		}
-		info.Backend = parseBackend(result.stdout)
+	} else if linuxOut.err != nil {
+		return ConnectionInfo{}, linuxOut.err
+	} else if winOut.err != nil {
+		return ConnectionInfo{}, winOut.err
 	}
 	conn.info = info
 	c.mu.Lock()
@@ -342,6 +414,7 @@ func (c *Client) openURLs(message string) {
 }
 func (c *Client) monitor(conn *connection) {
 	_ = conn.client.Wait()
+	conn.closeSFTP()
 	if conn.proxy != nil {
 		_ = conn.proxy.Close()
 	}
@@ -405,6 +478,7 @@ func (c *Client) disconnect() {
 		close(conn.done)
 	}
 	if conn != nil && !conn.local {
+		conn.closeSFTP()
 		_ = conn.client.Close()
 		if conn.proxy != nil {
 			_ = conn.proxy.Close()
@@ -460,62 +534,86 @@ func checked(result commandResult, err error) (commandResult, error) {
 	}
 	return result, nil
 }
-func (c *Client) ensureAgent(conn *connection) (string, error) {
+func (c *Client) ensureAgent(conn *connection) (string, bool, error) {
+	conn.agentMu.Lock()
+	defer conn.agentMu.Unlock()
 	if conn.agentPath != "" {
-		return conn.agentPath, nil
+		return conn.agentPath, conn.winCmd, nil
 	}
-	result, err := checked(execConnectionCommand(conn, psCommand(`$p=Join-Path $env:LOCALAPPDATA 'NohopCodex\nohop-agent.exe'; [Console]::Out.WriteLine($p); [Console]::Out.Write([int](Test-Path -LiteralPath $p))`)))
-	if err != nil {
-		return "", err
+	winCmd := false
+	result, err := execConnectionCommand(conn, `if defined LOCALAPPDATA (echo %LOCALAPPDATA%\NohopCodex\nohop-agent.exe&if exist "%LOCALAPPDATA%\NohopCodex\nohop-agent.exe" (echo 1) else (echo 0))`)
+	if err == nil && result.code == 0 && !strings.Contains(result.stdout, "%LOCALAPPDATA%") && strings.TrimSpace(result.stdout) != "" {
+		winCmd = true
+	} else {
+		result, err = checked(execConnectionCommand(conn, psCommand(`$p=Join-Path $env:LOCALAPPDATA 'NohopCodex\nohop-agent.exe'; [Console]::Out.WriteLine($p); [Console]::Out.Write([int](Test-Path -LiteralPath $p))`)))
+		if err != nil {
+			return "", false, err
+		}
 	}
 	parts := strings.SplitN(strings.ReplaceAll(strings.TrimSpace(result.stdout), "\r\n", "\n"), "\n", 2)
 	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || (parts[1] != "0" && parts[1] != "1") {
-		return "", errors.New("无法确定 Windows 代理目录")
+		return "", false, errors.New("无法确定 Windows 代理目录")
 	}
 	remote := strings.TrimSpace(parts[0])
 	if parts[1] == "0" {
 		if len(c.agentBinary) == 0 {
-			return "", errors.New("缺少内嵌 Windows ConPTY 代理，请重新构建应用")
+			return "", false, errors.New("缺少内嵌 Windows ConPTY 代理，请重新构建应用")
 		}
-		if _, err = checked(execConnectionCommand(conn, psCommand("New-Item -ItemType Directory -Force -Path (Split-Path "+psQuote(remote)+") | Out-Null"))); err != nil {
-			return "", err
+		if winCmd {
+			dir := remote[:max(0, strings.LastIndexAny(remote, `\/`))]
+			if dir != "" {
+				if _, err = checked(execConnectionCommand(conn, `if not exist "`+dir+`" mkdir "`+dir+`"`)); err != nil {
+					return "", false, err
+				}
+			}
+		} else if _, err = checked(execConnectionCommand(conn, psCommand("New-Item -ItemType Directory -Force -Path (Split-Path "+psQuote(remote)+") | Out-Null"))); err != nil {
+			return "", false, err
 		}
 		ftp, err := sftp.NewClient(conn.client)
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 		defer ftp.Close()
 		path := strings.ReplaceAll(remote, `\`, "/")
 		file, err := ftp.Create(path + ".upload")
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 		_, copyErr := io.Copy(file, bytes.NewReader(c.agentBinary))
 		closeErr := file.Close()
 		if copyErr != nil {
-			return "", copyErr
+			return "", false, copyErr
 		}
 		if closeErr != nil {
-			return "", closeErr
+			return "", false, closeErr
 		}
 		if err = ftp.Rename(path+".upload", path); err != nil {
-			return "", err
+			return "", false, err
 		}
 	}
 	// Every agent operation starts the daemon when needed; the following list or
 	// attach command also verifies that the binary can run.
 	conn.agentPath = remote
-	return remote, nil
+	conn.winCmd = winCmd
+	return remote, winCmd, nil
+}
+func buildAgentCmd(path string, winCmd bool, args ...string) string {
+	if winCmd {
+		// All agent arguments under winCmd are safe ASCII flags/names or base64 (--cwd-b64).
+		return `"` + path + `" ` + strings.Join(args, " ")
+	}
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = psQuote(arg)
+	}
+	return psCommand("& " + psQuote(path) + " " + strings.Join(quoted, " "))
 }
 func (c *Client) agentCommand(conn *connection, args ...string) (commandResult, error) {
-	path, err := c.ensureAgent(conn)
+	path, winCmd, err := c.ensureAgent(conn)
 	if err != nil {
 		return commandResult{}, err
 	}
-	for i := range args {
-		args[i] = psQuote(args[i])
-	}
-	return checked(execConnectionCommand(conn, psCommand("& "+psQuote(path)+" "+strings.Join(args, " "))))
+	return checked(execConnectionCommand(conn, buildAgentCmd(path, winCmd, args...)))
 }
 func (c *Client) ListSessions() ([]PersistentSession, error) {
 	conn, err := c.current()
@@ -526,12 +624,6 @@ func (c *Client) ListSessions() ([]PersistentSession, error) {
 		return c.localConsoleSessions(), nil
 	}
 	if conn.info.Platform == "windows" {
-		c.op.Lock()
-		defer c.op.Unlock()
-		conn, err = c.current()
-		if err != nil {
-			return nil, err
-		}
 		r, err := c.agentCommand(conn, "list")
 		if err != nil {
 			return nil, err
@@ -559,8 +651,6 @@ func (c *Client) ListSessions() ([]PersistentSession, error) {
 	return parseSessions(conn.info.Backend, r.stdout), nil
 }
 func (c *Client) OpenSession(input CreateSessionInput) (TerminalOpened, error) {
-	c.op.Lock()
-	defer c.op.Unlock()
 	conn, err := c.current()
 	if err != nil {
 		return TerminalOpened{}, err
@@ -572,18 +662,19 @@ func (c *Client) OpenSession(input CreateSessionInput) (TerminalOpened, error) {
 	cols, rows := dimension(input.Cols, 120), dimension(input.Rows, 32)
 	var cmd string
 	if conn.info.Platform == "windows" {
-		path, e := c.ensureAgent(conn)
+		path, winCmd, e := c.ensureAgent(conn)
 		if e != nil {
 			return TerminalOpened{}, e
 		}
 		args := []string{"attach", "--name", name, "--cols", strconv.Itoa(cols), "--rows", strconv.Itoa(rows)}
-		if strings.TrimSpace(input.Cwd) != "" {
-			args = append(args, "--cwd", strings.TrimSpace(input.Cwd))
+		if cwd := strings.TrimSpace(input.Cwd); cwd != "" {
+			if winCmd {
+				args = append(args, "--cwd-b64", base64.StdEncoding.EncodeToString([]byte(cwd)))
+			} else {
+				args = append(args, "--cwd", cwd)
+			}
 		}
-		for i := range args {
-			args[i] = psQuote(args[i])
-		}
-		cmd = psCommand("& " + psQuote(path) + " " + strings.Join(args, " "))
+		cmd = buildAgentCmd(path, winCmd, args...)
 	} else {
 		cmd, err = attachCommand(conn.info.Backend, name, input.Cwd)
 		if err != nil {
@@ -616,7 +707,7 @@ func (c *Client) OpenSession(input CreateSessionInput) (TerminalOpened, error) {
 		return TerminalOpened{}, err
 	}
 	id := hex.EncodeToString(random[:])
-	t := &terminal{id: id, name: name, session: session, stdin: stdin, emit: c.emit, retainHistory: true}
+	t := &terminal{id: id, name: name, session: session, stdin: stdin, emit: c.emit, retainHistory: true, coalesce: emitCoalesceWait}
 	session.Stdout = t
 	session.Stderr = t
 	started := make(chan error, 1)
@@ -697,8 +788,6 @@ func (c *Client) CloseTerminal(id string) {
 	}
 }
 func (c *Client) ResizeTerminal(id string, cols, rows int) error {
-	c.op.Lock()
-	defer c.op.Unlock()
 	t := c.getTerminal(id)
 	if t == nil {
 		return nil
@@ -722,8 +811,6 @@ func (c *Client) ResizeTerminal(id string, cols, rows int) error {
 	return nil
 }
 func (c *Client) KillSession(name string) error {
-	c.op.Lock()
-	defer c.op.Unlock()
 	conn, err := c.current()
 	if err != nil {
 		return err
@@ -761,6 +848,12 @@ func (c *Client) KillSession(name string) error {
 func (c *Client) SuspendTerminalView(id string) {
 	if t := c.getTerminal(id); t != nil {
 		t.mu.Lock()
+		if t.flushTimer != nil {
+			t.flushTimer.Stop()
+			t.flushTimer = nil
+		}
+		t.flushScheduled = false
+		t.pending = nil
 		t.ready = false
 		t.mu.Unlock()
 	}

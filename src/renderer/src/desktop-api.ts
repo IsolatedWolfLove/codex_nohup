@@ -21,7 +21,9 @@ type Backend = {
   ClipboardGetText: DesktopApi['clipboardGetText']; ClipboardSetText: DesktopApi['clipboardSetText'];
   AddSSHHost: DesktopApi['addSSHHost'];
   GetSSHConfig: DesktopApi['getSSHConfig']; SaveSSHConfig: DesktopApi['saveSSHConfig'];
-  ListSSHHosts: DesktopApi['listSSHHosts']; SubmitCredential: DesktopApi['submitCredential'];
+  ListSSHHosts: DesktopApi['listSSHHosts']; ListSSHKeys: DesktopApi['listSSHKeys'];
+  GenerateSSHKey: DesktopApi['generateSSHKey']; ImportSSHKey: DesktopApi['importSSHKey'];
+  DeleteSSHKey: DesktopApi['deleteSSHKey']; SubmitCredential: DesktopApi['submitCredential'];
 };
 declare global {
   interface Window {
@@ -66,6 +68,10 @@ export const desktop: DesktopApi = {
   getSSHConfig: () => window.go.main.App.GetSSHConfig(),
   saveSSHConfig: (content) => window.go.main.App.SaveSSHConfig(content),
   listSSHHosts: () => window.go.main.App.ListSSHHosts(),
+  listSSHKeys: () => window.go.main.App.ListSSHKeys(),
+  generateSSHKey: (name, passphrase, comment) => window.go.main.App.GenerateSSHKey(name, passphrase, comment),
+  importSSHKey: (name, content, passphrase) => window.go.main.App.ImportSSHKey(name, content, passphrase),
+  deleteSSHKey: (name) => window.go.main.App.DeleteSSHKey(name),
   submitCredential: (id, value, cancelled) => window.go.main.App.SubmitCredential(id, value, cancelled),
   onCredentialRequest: (callback) => window.runtime.EventsOn('credential:request', callback),
   onAuthUrl: (callback) => window.runtime.EventsOn('auth:url', callback),
@@ -77,6 +83,13 @@ export const desktop: DesktopApi = {
   },
   onTerminalEvent: (callback) => window.runtime.EventsOn('terminal:event', callback),
 };
+type Base64Uint8ArrayConstructor = Uint8ArrayConstructor & { fromBase64?: (data: string) => Uint8Array };
+
 export function decodeTerminalData(data: string): Uint8Array {
-  return Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
+  const ctor = Uint8Array as Base64Uint8ArrayConstructor;
+  if (typeof ctor.fromBase64 === 'function') return ctor.fromBase64(data);
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }

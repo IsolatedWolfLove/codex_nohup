@@ -54,6 +54,10 @@ func (a *App) ChoosePrivateKey() (string, error) {
 		_ = os.Remove(name)
 		return "", fmt.Errorf("无法导入私钥（最大 1 MiB）")
 	}
+	_ = os.Chmod(name, 0600)
+	if info, ok := parseSSHKeyInfo(name); ok && info.PublicKey != "" {
+		_ = os.WriteFile(name+".pub", []byte(info.PublicKey+"\n"), 0644)
+	}
 	return name, nil
 }
 
