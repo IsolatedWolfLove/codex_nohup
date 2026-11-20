@@ -16,6 +16,28 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 
 let lastCellSize = { width: 8.4, height: 18 };
+
+// WebGL only helps when the WebView renders it on the GPU. Many Linux WebKitGTK
+// builds expose WebGL2 through software rasterizers (llvmpipe/swiftshader), where
+// it is slower than xterm's DOM renderer. Detect that once and fall back to DOM.
+let webglHardwareChecked = false;
+let webglHardware = false;
+function hardwareAcceleratedWebgl(): boolean {
+  if (webglHardwareChecked) return webglHardware;
+  webglHardwareChecked = true;
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2', { depth: false, antialias: false, failIfMajorPerformanceCaveat: true });
+    if (!gl) return (webglHardware = false);
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const renderer = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || '') : '';
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    // Unknown renderer (string hidden): stay on the proven DOM renderer.
+    webglHardware = renderer !== '' && !/swiftshader|llvmpipe|software|basic render|mesa offscreen/i.test(renderer);
+  } catch { webglHardware = false; }
+  return webglHardware;
+}
+
 const baseTerminalTheme = {
   foreground: '#eee6fa', cursor: '#f5b4d5', cursorAccent: '#151221', selectionBackground: '#c4a7e74d',
   black: '#282234', red: '#f38ba8', green: '#a6e3a1', yellow: '#f9e2af', blue: '#89b4fa', magenta: '#cba6f7', cyan: '#94e2d5', white: '#ddd6ee',
@@ -127,18 +149,21 @@ export function TerminalView({ item, active, focused, lowLatency = false, onFocu
     instance.loadAddon(addon); instance.open(surface.current);
     let webglActive = false;
     let webgl: WebglAddon | null = null;
-    try {
-      webgl = new WebglAddon();
-      webgl.onContextLoss(() => {
+    if (hardwareAcceleratedWebgl()) {
+      try {
+        webgl = new WebglAddon();
+        webgl.onContextLoss(() => {
+          webglActive = false;
+          webgl?.dispose();
+          webgl = null;
+        });
+        instance.loadAddon(webgl);
+        webglActive = true;
+      } catch {
         webglActive = false;
         webgl?.dispose();
         webgl = null;
-      });
-      instance.loadAddon(webgl);
-      webglActive = true;
-    } catch {
-      webglActive = false;
-      webgl = null;
+      }
     }
     const rendering = bindTerminalRendering(instance,
       () => !webglActive && activeRef.current && document.visibilityState === 'visible');
