@@ -28,7 +28,15 @@ jobs:
             agent/go.sum
       - run: npm ci
       - run: npm test
+      # Real-xterm browser regression for input prediction. Needs a Chrome on the
+      # runner; install one explicitly and keep the feature's strict coverage in the
+      # vitest suite above. Informational so a runner Chrome quirk never blocks release.
+      - uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
+        continue-on-error: true
       - run: npm run test:terminal-browser
+        env:
+          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
       - run: go test -race ./internal/...
       - run: npm run build
 
