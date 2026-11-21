@@ -28,6 +28,7 @@ jobs:
             agent/go.sum
       - run: npm ci
       - run: npm test
+      - run: npm run test:terminal-browser
       - run: go test -race ./internal/...
       - run: npm run build
 

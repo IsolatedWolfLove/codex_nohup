@@ -1,6 +1,6 @@
 {
   "name": "nohop-codex",
-  "version": "3.3.1",
+  "version": "3.3.2",
   "private": true,
   "homepage": "https://github.com/IsolatedWolfLove/codex_nohup",
   "description": "Persistent SSH terminal sessions for Linux and Windows",
@@ -10,6 +10,7 @@
     "dev:frontend": "vite",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:terminal-browser": "node scripts/test-terminal-prediction.mjs",
     "test:go": "go test -race ./internal/...",
     "build": "npm run typecheck && vite build",
     "agent:win": "node scripts/build-agent.mjs windows amd64",

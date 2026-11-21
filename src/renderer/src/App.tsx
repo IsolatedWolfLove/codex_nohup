@@ -10,6 +10,8 @@ import { useWorkspace, type OpenTerminal } from './use-workspace';
 import { bindTerminalScrolling } from './terminal-scrolling';
 import { bindTerminalLayout } from './terminal-layout';
 import { bindTerminalRendering } from './terminal-rendering';
+import { bindTerminalPrediction } from './terminal-prediction-view';
+import { predictionStorageKey, readPredictionMode, type PredictionMode } from './terminal-prediction';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -51,12 +53,13 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function TerminalView({ item, active, focused, lowLatency = false, onFocus }: { item: OpenTerminal; active: boolean; focused: boolean; lowLatency?: boolean; onFocus: () => void }) {
+export function TerminalView({ item, active, focused, lowLatency = false, predictionEnabled, onFocus }: { item: OpenTerminal; active: boolean; focused: boolean; lowLatency?: boolean; predictionEnabled: boolean; onFocus: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const fit = useRef<(() => void) | null>(null);
   const scrolling = useRef<ReturnType<typeof bindTerminalScrolling> | null>(null);
+  const prediction = useRef<ReturnType<typeof bindTerminalPrediction> | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
   const [scrollState, setScrollState] = useState<TerminalScrollState>({ lines: 0, position: 0, rows: 24 });
@@ -81,7 +84,7 @@ export function TerminalView({ item, active, focused, lowLatency = false, onFocu
     try {
       const path = await desktop.uploadImage(item.id, data);
       // Paste a quoted path only. Never submit or execute the AI prompt.
-      if (terminal.current === instance) instance?.paste("'" + path.replaceAll("'", (item.backend === 'conpty' || item.backend === 'local') ? "''" : "'\\''") + "' ");
+      if (terminal.current === instance) { prediction.current?.reset(true); instance?.paste("'" + path.replaceAll("'", (item.backend === 'conpty' || item.backend === 'local') ? "''" : "'\\''") + "' "); }
       setScrollError('截图已上传，图片路径已粘贴；请在 AI 中提交。');
     } catch (error) { setScrollError(errorMessage(error)); }
     finally { uploading.current = false; }
@@ -95,7 +98,7 @@ export function TerminalView({ item, active, focused, lowLatency = false, onFocu
       if (terminal.current !== instance) return;
       if (image) { await uploadImage(image); return; }
       const value = await desktop.clipboardGetText();
-      if (value && terminal.current === instance) instance?.paste(value);
+      if (value && terminal.current === instance) { prediction.current?.reset(true); instance?.paste(value); }
       else if (!value) setScrollError('剪贴板没有可粘贴的内容。');
     })().catch((error) => setScrollError(errorMessage(error)));
   }, [uploadImage]);
@@ -188,8 +191,15 @@ export function TerminalView({ item, active, focused, lowLatency = false, onFocu
       frame = requestAnimationFrame(() => layout.fit());
     };
     terminal.current = instance; fit.current = scheduleFit;
+    // Register prediction's capture listeners before the scroller, which stops
+    // wheel propagation after taking ownership of the event.
+    const predictor = bindTerminalPrediction(instance, surface.current,
+      data => desktop.writeTerminal(item.id, data),
+      error => instance.writeln(`\r\n${errorMessage(error)}`),
+      () => activeRef.current && document.visibilityState === 'visible');
+    prediction.current = predictor;
     const scroller = bindTerminalScrolling(instance, surface.current, item.backend, item.id, desktop,
-      (state) => { setScrollState(state); setScrollError(''); },
+      (state) => { if (state.position < state.lines) predictor.reset(true); setScrollState(state); setScrollError(''); },
       (error) => setScrollError(errorMessage(error)), () => activeRef.current);
     scrolling.current = scroller;
     scheduleFit();
@@ -212,10 +222,11 @@ export function TerminalView({ item, active, focused, lowLatency = false, onFocu
       }
       return true;
     });
-    const input = instance.onData((data) => void desktop.writeTerminal(item.id, data).catch((error) => instance.writeln(errorMessage(error))));
     const unsubscribe = desktop.onTerminalEvent((event: TerminalEvent) => {
+      if (event.type === 'disconnected' && event.connectionId === item.connectionId) { predictor.stop(); return; }
       if (event.terminalId !== item.id) return;
-      if (event.type === 'data') instance.write(decodeTerminalData(event.data));
+      if (event.type === 'data') predictor.write(decodeTerminalData(event.data));
+      if (event.type === 'error' || event.type === 'exit') predictor.stop();
       if (event.type === 'error') instance.writeln(`\r\n\x1b[31m${event.message}\x1b[0m`);
       if (event.type === 'exit') instance.writeln('\r\n\x1b[90m[终端已关闭，可从会话列表重新进入仍在运行的会话]\x1b[0m');
     });
@@ -235,9 +246,13 @@ export function TerminalView({ item, active, focused, lowLatency = false, onFocu
       window.removeEventListener('focus', scheduleFit);
       scroller.dispose(); scrolling.current = null;
       webgl?.dispose();
-      unsubscribe(); input.dispose(); instance.dispose(); terminal.current = null; fit.current = null;
+      unsubscribe(); predictor.dispose(); prediction.current = null; instance.dispose(); terminal.current = null; fit.current = null;
     };
   }, [item.id, item.backend, copySelection, pasteClipboard]);
+
+  useEffect(() => {
+    prediction.current?.setEnabled(predictionEnabled && active);
+  }, [predictionEnabled, active, item.id, item.backend]);
 
   useEffect(() => {
     const instance = terminal.current;
@@ -266,7 +281,7 @@ export function TerminalView({ item, active, focused, lowLatency = false, onFocu
     <input className="terminal-scrollbar" type="range" min={0} max={Math.max(1, scrollState.lines)} step={1}
       value={scrollState.position} disabled={scrollState.lines === 0} aria-label="终端滚动条" aria-orientation="vertical"
       aria-valuetext={scrollState.position === scrollState.lines ? '最新输出' : `历史第 ${scrollState.position + 1} 行`}
-      onChange={(event) => scrolling.current?.setPosition(Number(event.target.value))} />
+      onChange={(event) => { prediction.current?.reset(true); scrolling.current?.setPosition(Number(event.target.value)); }} />
     {scrollError && <div className="terminal-scroll-error" role="status">{scrollError}</div>}
     {contextMenu && <div ref={menu} className="terminal-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu">
       <button type="button" role="menuitem" disabled={!contextMenu.canCopy} onClick={copySelection}><Copy size={15} />复制</button>
@@ -286,7 +301,7 @@ export function App() {
     if (detaching.current.has(item.key) || !item.id) return;
     detaching.current.add(item.key);
     setDetached(current => new Set(current).add(item.key));
-    try { await detachTerminal(JSON.stringify(item)); }
+    try { await detachTerminal(JSON.stringify({ ...item, predictionEnabled: predictionAllowed(item) })); }
     catch (error) { setDetached(current => { const next = new Set(current); next.delete(item.key); return next; }); setMessage(errorMessage(error)); }
     finally { detaching.current.delete(item.key); }
   }
@@ -320,12 +335,20 @@ export function App() {
   }, []);
   const [message, setMessage] = useState('');
   const { servers, terminals, setTerminals, selected, setSelected, activeId, setActiveId, layout, setLayout, addServer, removeServer, recover } = useWorkspace(setMessage, estimateGrid);
+  const [predictionMode, setPredictionMode] = useState<PredictionMode>(() => readPredictionMode());
+  const changePredictionMode = (mode: PredictionMode) => {
+    setPredictionMode(mode);
+    try { localStorage.setItem(predictionStorageKey, mode); } catch { /* The in-memory setting still works. */ }
+  };
+  function predictionAllowed(item: OpenTerminal) {
+    return import.meta.env.MODE !== 'android' && predictionMode === 'auto' && servers.some(s => s.input.connectionId === item.connectionId && !s.input.local && s.info !== null);
+  }
   useEffect(() => {
     detached.forEach(key => {
       const item = terminals.find(t => t.key === key);
-      void syncDetached(JSON.stringify(item ?? { key, closed: true })).catch(error => setMessage(errorMessage(error)));
+      void syncDetached(JSON.stringify(item ? { ...item, predictionEnabled: predictionAllowed(item) } : { key, closed: true })).catch(error => setMessage(errorMessage(error)));
     });
-  }, [terminals, detached]);
+  }, [terminals, detached, servers, predictionMode]);
   const server = servers.find(s => s.input.connectionId === selected);
   const connected = server?.info ?? null;
   const [sessions, setSessions] = useState<PersistentSession[]>([]);
@@ -658,7 +681,7 @@ export function App() {
 
   </main>;
 
-  const workspace = <main style={{ '--terminal-shade': wallpaperShade / 100 } as React.CSSProperties} className={`workspace ${sidebarOpen ? 'sidebar-open' : ''}`}><button className="sidebar-shade" aria-label="关闭服务器列表" onClick={() => setSidebarOpen(false)} /><aside><div className="server-list"><button className="primary" onClick={() => setShowConnections(true)}><Plus size={16}/>连接其他服务器</button>{servers.map(s => <div className={`server-row ${selected === s.input.connectionId ? 'selected' : ''}`} key={s.input.connectionId}><button onClick={() => setSelected(s.input.connectionId)}><strong>{s.input.alias || s.input.host}</strong><small>{s.status}</small></button>{s.status !== '已连接' && <button title="重试连接" onClick={() => recover(s.input)}><RefreshCw size={14}/></button>}</div>)}</div><header><div><span className="eyebrow">{server?.status}</span><strong>{server?.input.alias || server?.input.host}</strong><small>{connected?.platform ?? '恢复连接中'} · {connected?.backend ?? ''}</small></div><button className="icon" title="断开连接" onClick={() => void disconnect()}><LogOut size={18} /></button></header><section className="new-session"><label>会话名称<input value={newName} onChange={(e) => setNewName(e.target.value)} /></label><label onFocusCapture={ensureHomeDirectory}>工作目录{server?.input.local ? <input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="~" /> : <RemotePathInput key={selected} connectionId={selected ?? ''} directory={homeDirectory} home={homeDirectory?.path} value={cwd} onChange={setCwd} directoriesOnly label="工作目录" placeholder="~" disabled={!connected} />}</label>{connected?.backend === 'none' && <p className="backend-warning">{server?.input.local ? '本机' : '远端'}未安装 tmux 或 screen，无法创建持久会话。请安装 tmux 后重新连接。</p>}<button className="primary" disabled={busy || (!connected || connected.backend === 'none')} title={!connected ? '正在恢复连接' : connected.backend === 'none' ? '远端需要安装 tmux 或 screen' : undefined} onClick={() => { setSidebarOpen(false); void open(newName, true); }}><Plus size={17} /> {!connected ? '等待恢复连接' : connected.backend === 'none' ? '需要安装 tmux / screen' : busy ? '正在进入…' : '新建并进入'}</button></section>{server?.input.local && connected?.backend === 'local' && <p className="local-session-note">本机控制台关闭标签后继续运行；断开本机连接或退出应用会结束会话。</p>}<div className="session-heading"><span>{server?.input.local ? '本机会话' : '远端会话'}</span><button className="icon" onClick={() => void refresh()}><RefreshCw size={16} /></button></div><div className="session-list">{sessions.map((session) => <div className="session-card" key={session.name} onClick={() => { setSidebarOpen(false); void open(session.name); }}><SquareTerminal size={18} /><div><strong>{session.name}</strong><small>{session.attached ? '已连接' : '等待重新进入'}{session.windows ? ` · ${session.windows} 窗口` : ''}</small></div><button className="delete" title="终止远端会话和其中的进程" onClick={(event) => { event.stopPropagation(); void kill(session.name); }}><Trash2 size={15} /></button></div>)}{sessions.length === 0 && <p className="empty">还没有持久会话</p>}</div></aside><section className="terminal-area"><nav>{terminals.map((item) => <TerminalTab key={item.key} active={activeId === item.key} enabled={import.meta.env.MODE !== 'android' && !!item.id} onDetach={() => void detach(item)}><button className="tab-select" onClick={() => { setActiveId(item.key); setSelected(item.connectionId); if (detached.has(item.key)) void detach(item); }}><span>{servers.find(s => s.input.connectionId === item.connectionId)?.input.alias || servers.find(s => s.input.connectionId === item.connectionId)?.input.host} · {item.name}</span></button>{import.meta.env.MODE !== 'android' && <button className="tab-action" title="拖出为独立窗口" disabled={!item.id} onClick={() => void detach(item)}>↗</button>}<button className="tab-action terminate" title="终止远端会话和其中的进程" onClick={() => void kill(item.name, item.connectionId)}><Trash2 size={13}/></button><button className="tab-action" title="关闭标签（会话继续运行）" onClick={() => void closeTerminal(item.key)}><X size={14}/></button></TerminalTab>)}</nav><div className="layout-toolbar"><button className="mobile-menu" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(value => !value)}>服务器 / 会话</button><button disabled={!connected || server?.input.local} onClick={() => { if (selected && server) setFileServer({ id: selected, name: server.input.alias || server.input.host }); }}>SFTP 文件</button><button disabled={!connected || server?.input.local} onClick={() => { if (selected && server) setForwardServer({ id: selected, name: server.input.alias || server.input.host }); }}>端口转发</button><label className="wallpaper-control">背景遮罩<input aria-label="背景遮罩浓度" type="range" min="15" max="90" value={wallpaperShade} onChange={event => setWallpaperShade(Number(event.target.value))} /><output>{wallpaperShade}%</output></label><button type="button" aria-pressed={lowLatency} title="关闭透明、背景图与高斯模糊以获得最低绘制延迟" onClick={() => setLowLatency(v => !v)}>极速纯色</button><span>终端布局</span>{([['single', '单屏'], ['columns', '左右分屏'], ['rows', '上下分屏'], ['grid', '网格']] as const).map(([value, label]) => <button key={value} aria-pressed={layout === value} onClick={() => setLayout(value)}>{label}</button>)}</div><div ref={stackRef} className={`terminal-stack layout-${layout}`}>{terminals.map((item) => <div key={item.key} className={`terminal-pane ${(layout !== 'single' || activeId === item.key || (!terminals.some(t => t.key === activeId) && item.key === terminals[0]?.key)) ? 'visible' : ''} ${activeId === item.key ? 'focused' : ''}`}><div className="pane-title">{servers.find(s => s.input.connectionId === item.connectionId)?.input.alias || servers.find(s => s.input.connectionId === item.connectionId)?.input.host} · {item.name}</div>{detached.has(item.key) ? <div className="terminal-empty"><h2>{item.name}</h2><p>已在独立窗口中打开</p><button onClick={() => void detach(item)}>显示窗口</button></div> : item.id ? <TerminalView item={item} focused={activeId === item.key} active={layout !== 'single' || activeId === item.key || (!terminals.some(t => t.key === activeId) && item.key === terminals[0]?.key)} lowLatency={lowLatency} onFocus={() => { setActiveId(item.key); setSelected(item.connectionId); }} /> : <div className="terminal-empty">等待恢复远端会话…</div>}</div>)}{terminals.length === 0 && <div className="terminal-empty"><SquareTerminal size={48} /><h2>选择一个会话</h2><p>点击左侧会话即可进入；关闭标签不会结束会话任务。使用垃圾桶可终止会话。</p></div>}</div><div className="status">{message || '截图粘贴：Ctrl+Shift+V / Shift+Insert / 右键粘贴 · 图片上传到当前服务器后插入路径'} </div></section></main>;
+  const workspace = <main style={{ '--terminal-shade': wallpaperShade / 100 } as React.CSSProperties} className={`workspace ${sidebarOpen ? 'sidebar-open' : ''}`}><button className="sidebar-shade" aria-label="关闭服务器列表" onClick={() => setSidebarOpen(false)} /><aside><div className="server-list"><button className="primary" onClick={() => setShowConnections(true)}><Plus size={16}/>连接其他服务器</button>{servers.map(s => <div className={`server-row ${selected === s.input.connectionId ? 'selected' : ''}`} key={s.input.connectionId}><button onClick={() => setSelected(s.input.connectionId)}><strong>{s.input.alias || s.input.host}</strong><small>{s.status}</small></button>{s.status !== '已连接' && <button title="重试连接" onClick={() => recover(s.input)}><RefreshCw size={14}/></button>}</div>)}</div><header><div><span className="eyebrow">{server?.status}</span><strong>{server?.input.alias || server?.input.host}</strong><small>{connected?.platform ?? '恢复连接中'} · {connected?.backend ?? ''}</small></div><button className="icon" title="断开连接" onClick={() => void disconnect()}><LogOut size={18} /></button></header><section className="new-session"><label>会话名称<input value={newName} onChange={(e) => setNewName(e.target.value)} /></label><label onFocusCapture={ensureHomeDirectory}>工作目录{server?.input.local ? <input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="~" /> : <RemotePathInput key={selected} connectionId={selected ?? ''} directory={homeDirectory} home={homeDirectory?.path} value={cwd} onChange={setCwd} directoriesOnly label="工作目录" placeholder="~" disabled={!connected} />}</label>{connected?.backend === 'none' && <p className="backend-warning">{server?.input.local ? '本机' : '远端'}未安装 tmux 或 screen，无法创建持久会话。请安装 tmux 后重新连接。</p>}<button className="primary" disabled={busy || (!connected || connected.backend === 'none')} title={!connected ? '正在恢复连接' : connected.backend === 'none' ? '远端需要安装 tmux 或 screen' : undefined} onClick={() => { setSidebarOpen(false); void open(newName, true); }}><Plus size={17} /> {!connected ? '等待恢复连接' : connected.backend === 'none' ? '需要安装 tmux / screen' : busy ? '正在进入…' : '新建并进入'}</button></section>{server?.input.local && connected?.backend === 'local' && <p className="local-session-note">本机控制台关闭标签后继续运行；断开本机连接或退出应用会结束会话。</p>}<div className="session-heading"><span>{server?.input.local ? '本机会话' : '远端会话'}</span><button className="icon" onClick={() => void refresh()}><RefreshCw size={16} /></button></div><div className="session-list">{sessions.map((session) => <div className="session-card" key={session.name} onClick={() => { setSidebarOpen(false); void open(session.name); }}><SquareTerminal size={18} /><div><strong>{session.name}</strong><small>{session.attached ? '已连接' : '等待重新进入'}{session.windows ? ` · ${session.windows} 窗口` : ''}</small></div><button className="delete" title="终止远端会话和其中的进程" onClick={(event) => { event.stopPropagation(); void kill(session.name); }}><Trash2 size={15} /></button></div>)}{sessions.length === 0 && <p className="empty">还没有持久会话</p>}</div></aside><section className="terminal-area"><nav>{terminals.map((item) => <TerminalTab key={item.key} active={activeId === item.key} enabled={import.meta.env.MODE !== 'android' && !!item.id} onDetach={() => void detach(item)}><button className="tab-select" onClick={() => { setActiveId(item.key); setSelected(item.connectionId); if (detached.has(item.key)) void detach(item); }}><span>{servers.find(s => s.input.connectionId === item.connectionId)?.input.alias || servers.find(s => s.input.connectionId === item.connectionId)?.input.host} · {item.name}</span></button>{import.meta.env.MODE !== 'android' && <button className="tab-action" title="拖出为独立窗口" disabled={!item.id} onClick={() => void detach(item)}>↗</button>}<button className="tab-action terminate" title="终止远端会话和其中的进程" onClick={() => void kill(item.name, item.connectionId)}><Trash2 size={13}/></button><button className="tab-action" title="关闭标签（会话继续运行）" onClick={() => void closeTerminal(item.key)}><X size={14}/></button></TerminalTab>)}</nav><div className="layout-toolbar"><button className="mobile-menu" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(value => !value)}>服务器 / 会话</button><button disabled={!connected || server?.input.local} onClick={() => { if (selected && server) setFileServer({ id: selected, name: server.input.alias || server.input.host }); }}>SFTP 文件</button><button disabled={!connected || server?.input.local} onClick={() => { if (selected && server) setForwardServer({ id: selected, name: server.input.alias || server.input.host }); }}>端口转发</button><label className="wallpaper-control">背景遮罩<input aria-label="背景遮罩浓度" type="range" min="15" max="90" value={wallpaperShade} onChange={event => setWallpaperShade(Number(event.target.value))} /><output>{wallpaperShade}%</output></label><button type="button" aria-pressed={lowLatency} title="关闭透明、背景图与高斯模糊以获得最低绘制延迟" onClick={() => setLowLatency(v => !v)}>极速纯色</button>{!isAndroid && <label className="prediction-setting">输入预测<select aria-label="输入预测" value={predictionMode} onChange={event => changePredictionMode(event.target.value as PredictionMode)}><option value="auto">自动</option><option value="off">关闭</option></select></label>}<span>终端布局</span>{([['single', '单屏'], ['columns', '左右分屏'], ['rows', '上下分屏'], ['grid', '网格']] as const).map(([value, label]) => <button key={value} aria-pressed={layout === value} onClick={() => setLayout(value)}>{label}</button>)}</div><div ref={stackRef} className={`terminal-stack layout-${layout}`}>{terminals.map((item) => <div key={item.key} className={`terminal-pane ${(layout !== 'single' || activeId === item.key || (!terminals.some(t => t.key === activeId) && item.key === terminals[0]?.key)) ? 'visible' : ''} ${activeId === item.key ? 'focused' : ''}`}><div className="pane-title">{servers.find(s => s.input.connectionId === item.connectionId)?.input.alias || servers.find(s => s.input.connectionId === item.connectionId)?.input.host} · {item.name}</div>{detached.has(item.key) ? <div className="terminal-empty"><h2>{item.name}</h2><p>已在独立窗口中打开</p><button onClick={() => void detach(item)}>显示窗口</button></div> : item.id ? <TerminalView item={item} focused={activeId === item.key} active={layout !== 'single' || activeId === item.key || (!terminals.some(t => t.key === activeId) && item.key === terminals[0]?.key)} lowLatency={lowLatency} predictionEnabled={predictionAllowed(item)} onFocus={() => { setActiveId(item.key); setSelected(item.connectionId); }} /> : <div className="terminal-empty">等待恢复远端会话…</div>}</div>)}{terminals.length === 0 && <div className="terminal-empty"><SquareTerminal size={48} /><h2>选择一个会话</h2><p>点击左侧会话即可进入；关闭标签不会结束会话任务。使用垃圾桶可终止会话。</p></div>}</div><div className="status">{message || '截图粘贴：Ctrl+Shift+V / Shift+Insert / 右键粘贴 · 图片上传到当前服务器后插入路径'} </div></section></main>;
   return <>{forwardServer && <PortForwards key={forwardServer.id} connectionId={forwardServer.id} serverName={forwardServer.name} onBack={() => setForwardServer(null)} />}{fileServer && <FileBrowser key={fileServer.id} connectionId={fileServer.id} serverName={fileServer.name} onBack={() => setFileServer(null)} />}<div style={{ display: fileServer || forwardServer ? 'none' : 'contents' }}>{servers.length > 0 && workspace}{(servers.length === 0 || showConnections) && login}</div>    {credential && <div className="modal-backdrop credential-layer"><form className="credential-modal" onSubmit={(event) => { event.preventDefault(); answerCredential(false); }}><KeyRound size={24}/><h3>{credential.kind === 'hostkey' ? '首次连接服务器' : credential.kind === 'passphrase' ? 'SSH 私钥口令' : 'SSH 认证'}</h3><p>{credential.prompt}</p>{credential.kind !== 'hostkey' && <input autoFocus type={credential.secret ? 'password' : 'text'} value={credentialValue} onChange={(event) => setCredentialValue(event.target.value)} />}<div><button type="button" onClick={() => answerCredential(true)}>取消</button><button className="primary">{credential.kind === 'hostkey' ? '信任并连接' : '确认'}</button></div></form></div>}
   </>;
 }
