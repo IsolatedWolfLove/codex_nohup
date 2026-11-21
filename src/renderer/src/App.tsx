@@ -165,8 +165,12 @@ export function TerminalView({ item, active, focused, lowLatency = false, onFocu
         webgl = null;
       }
     }
+    // Always keep the force-repaint workaround: shell autosuggestions (zsh ghost
+    // text) and Tab completion redraw via cursor-only/erase sequences that some
+    // WebViews drop. Gating this on the renderer once hid those suggestions.
+    void webglActive;
     const rendering = bindTerminalRendering(instance,
-      () => !webglActive && activeRef.current && document.visibilityState === 'visible');
+      () => activeRef.current && document.visibilityState === 'visible');
     let frame = 0;
     let disposed = false;
     const initialSynced = item.cols && item.rows ? `${item.cols}:${item.rows}` : '';
@@ -342,8 +346,12 @@ export function App() {
     homeFetchedFor.current = targetId;
     void desktop.listFiles(targetId, '').then(directory => {
       if (selectedRef.current === targetId) setHomeDirectory(directory);
-    }).catch(() => { /* Manual paths remain available without SFTP. */ });
+    }).catch(() => { if (homeFetchedFor.current === targetId) homeFetchedFor.current = null; /* Retry on focus; manual paths still work. */ });
   }, [selected, connected, server?.input.local]);
+  // Preload working-directory folder suggestions as soon as the server connects,
+  // so completion is instant on focus. The fetch is non-blocking and never delays
+  // session creation; focus retries it if the connect-time load failed.
+  useEffect(() => { ensureHomeDirectory(); }, [ensureHomeDirectory]);
   const [hosts, setHosts] = useState<SSHHost[]>([]);
   const [sshKeys, setSSHKeys] = useState<SSHKeyInfo[]>([]);
   const [showKeyManager, setShowKeyManager] = useState(false);
@@ -545,8 +553,12 @@ export function App() {
     setBusy(true); setMessage(`正在进入 ${name}…`);
     try {
       let workingDirectory = create ? cwd.trim() : '';
-      if (create && !server?.input.local && homeDirectory) {
-        workingDirectory = sessionDirectory(workingDirectory, homeDirectory.path);
+      if (create && !server?.input.local) {
+        const needsHome = !workingDirectory || workingDirectory === '~' || workingDirectory.startsWith('~/') || !/^(?:\/|[a-z]:[\\/])/i.test(workingDirectory);
+        if (needsHome) {
+          const home = homeDirectory ?? await desktop.listFiles(selected!, '');
+          workingDirectory = sessionDirectory(workingDirectory, home.path);
+        }
       } else if (server?.input.local && workingDirectory === '~') workingDirectory = '';
       const grid = estimateGrid();
       const result = await desktop.openSession({ connectionId: selected!, name, cwd: workingDirectory, cols: grid?.cols, rows: grid?.rows });
